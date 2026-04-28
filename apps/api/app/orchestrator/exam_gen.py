@@ -1,0 +1,542 @@
+"""Exam artifact generation prompts.
+
+MVP supports two kinds: cheatsheet and practice_set. Output is structured
+JSON via Anthropic tool-use (forced JSON schema).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.integrations.anthropic import MODEL_IDS, ModelAlias, get_client
+from app.models import ExamSource, FileChunk
+
+# Conservative chunk budget for prompts.
+MAX_SOURCE_CHARS = 60_000
+
+
+# ---------- helpers ----------
+
+
+async def collect_workspace_text(
+    session: AsyncSession, workspace_id: UUID, char_budget: int = MAX_SOURCE_CHARS
+) -> str:
+    """Concatenate all source-file chunks for a workspace, trimmed to budget."""
+    sources = (await session.execute(
+        select(ExamSource).where(ExamSource.workspace_id == workspace_id)
+    )).scalars().all()
+    if not sources:
+        return ""
+
+    file_ids = [s.file_id for s in sources]
+    rows = (await session.execute(
+        select(FileChunk)
+        .where(FileChunk.file_id.in_(file_ids))
+        .order_by(FileChunk.file_id, FileChunk.chunk_index)
+    )).scalars().all()
+
+    pieces: list[str] = []
+    used = 0
+    for c in rows:
+        sec = f"[{c.section_path}]\n" if c.section_path else ""
+        block = sec + c.text + "\n\n"
+        if used + len(block) > char_budget:
+            break
+        pieces.append(block)
+        used += len(block)
+    return "".join(pieces)
+
+
+# ---------- cheatsheet ----------
+
+
+CHEATSHEET_TOOL = {
+    "name": "emit_cheatsheet",
+    "description": "Emit the structured cheatsheet for the user.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "sections": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "items": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "body_md": {"type": "string"},
+                                },
+                                "required": ["name", "body_md"],
+                            },
+                        },
+                    },
+                    "required": ["title", "items"],
+                },
+            },
+            "density_score": {"type": "number"},
+        },
+        "required": ["sections"],
+    },
+}
+
+
+CHEATSHEET_SYSTEM = """You produce intelligence-dense cheatsheets for serious students.
+Compress lecture notes / readings into a small number of sections (Definitions,
+Theorems, Pitfalls, Worked Examples). Each item is a short markdown blurb —
+crisp, exam-ready, without filler. Quote only when precision matters."""
+
+
+async def generate_cheatsheet(
+    *, model: ModelAlias, source_text: str, title: str
+) -> dict[str, Any]:
+    user = (
+        f"Title: {title}\n\nProduce a cheatsheet from these sources:\n\n{source_text}\n\n"
+        "Use 3–5 sections. Each section has 4–10 items. Keep it tight."
+    )
+    client = get_client()
+    resp = await client.messages.create(
+        model=MODEL_IDS[model],
+        max_tokens=8000,
+        temperature=0.3,
+        system=CHEATSHEET_SYSTEM,
+        tools=[CHEATSHEET_TOOL],
+        tool_choice={"type": "tool", "name": "emit_cheatsheet"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for b in resp.content:
+        if getattr(b, "type", "") == "tool_use" and b.name == "emit_cheatsheet":
+            return {"version": 1, **b.input, "tokens_in": resp.usage.input_tokens,
+                    "tokens_out": resp.usage.output_tokens}
+    raise RuntimeError("no cheatsheet emitted")
+
+
+# ---------- practice set ----------
+
+
+PRACTICE_TOOL = {
+    "name": "emit_practice_set",
+    "description": "Emit a structured practice question set.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "questions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "type": {"type": "string", "enum": ["short_answer", "mcq"]},
+                        "prompt": {"type": "string"},
+                        "choices": {
+                            "type": "array", "items": {"type": "string"},
+                        },
+                        "correct_index": {"type": "integer"},
+                        "expected": {"type": "string"},
+                        "rubric": {"type": "string"},
+                        "difficulty": {"type": "number"},
+                        "topic": {"type": "string"},
+                    },
+                    "required": ["id", "type", "prompt", "topic", "difficulty"],
+                },
+            },
+            "topics_covered": {
+                "type": "array", "items": {"type": "string"},
+            },
+        },
+        "required": ["questions"],
+    },
+}
+
+
+PRACTICE_SYSTEM = """You write calibrated practice questions from study material.
+Mix short-answer and MCQ. Difficulty 0.0–1.0 (0=warm-up, 1=hard). Cover the
+material's range; don't cluster on one topic. Provide model rubric or correct_index."""
+
+
+async def generate_practice_set(
+    *,
+    model: ModelAlias,
+    source_text: str,
+    title: str,
+    n_questions: int = 10,
+    weak_topics: list[str] | None = None,
+) -> dict[str, Any]:
+    weak_hint = (
+        f"\n\nBias 60% of questions toward these weak topics: {', '.join(weak_topics)}."
+        if weak_topics
+        else ""
+    )
+    user = (
+        f"Title: {title}\n\nGenerate {n_questions} practice questions from "
+        f"these sources:\n\n{source_text}{weak_hint}"
+    )
+    client = get_client()
+    resp = await client.messages.create(
+        model=MODEL_IDS[model],
+        max_tokens=6000,
+        temperature=0.5,
+        system=PRACTICE_SYSTEM,
+        tools=[PRACTICE_TOOL],
+        tool_choice={"type": "tool", "name": "emit_practice_set"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for b in resp.content:
+        if getattr(b, "type", "") == "tool_use" and b.name == "emit_practice_set":
+            return {
+                "version": 1, **b.input,
+                "tokens_in": resp.usage.input_tokens,
+                "tokens_out": resp.usage.output_tokens,
+            }
+    raise RuntimeError("no practice set emitted")
+
+
+# ---------- concept map ----------
+
+
+CONCEPT_MAP_TOOL = {
+    "name": "emit_concept_map",
+    "description": "Emit a concept map of the material.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "nodes": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "label": {"type": "string"},
+                        "kind": {"type": "string", "enum": ["concept", "definition", "theorem", "method"]},
+                        "depth": {"type": "integer", "description": "0=foundational"},
+                        "summary": {"type": "string"},
+                    },
+                    "required": ["id", "label", "kind", "depth"],
+                },
+            },
+            "edges": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "from": {"type": "string"},
+                        "to": {"type": "string"},
+                        "label": {"type": "string"},
+                    },
+                    "required": ["from", "to", "label"],
+                },
+            },
+            "layout_hint": {"type": "string", "enum": ["hierarchical", "radial", "force"]},
+        },
+        "required": ["nodes", "edges"],
+    },
+}
+
+
+CONCEPT_MAP_SYSTEM = """You build concept maps that show STRUCTURE: what's
+foundational, what builds on what, where the load-bearing assumptions live.
+Use depth=0 for foundational, increasing as ideas build. Edges are typed:
+'implies', 'specializes', 'requires', 'contrasts', 'supports'."""
+
+
+async def generate_concept_map(
+    *, model: ModelAlias, source_text: str, title: str
+) -> dict[str, Any]:
+    user = (
+        f"Title: {title}\n\nProduce a concept map from these sources. Aim for "
+        f"15-30 nodes; clarity over completeness.\n\n{source_text}"
+    )
+    client = get_client()
+    resp = await client.messages.create(
+        model=MODEL_IDS[model],
+        max_tokens=6000,
+        temperature=0.3,
+        system=CONCEPT_MAP_SYSTEM,
+        tools=[CONCEPT_MAP_TOOL],
+        tool_choice={"type": "tool", "name": "emit_concept_map"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for b in resp.content:
+        if getattr(b, "type", "") == "tool_use" and b.name == "emit_concept_map":
+            return {
+                "version": 1, **b.input,
+                "tokens_in": resp.usage.input_tokens,
+                "tokens_out": resp.usage.output_tokens,
+            }
+    raise RuntimeError("no concept map emitted")
+
+
+# ---------- knowledge graph (Voronoi-style) ----------
+
+
+KNOWLEDGE_GRAPH_TOOL = {
+    "name": "emit_knowledge_graph",
+    "description": "Emit a Voronoi-friendly knowledge graph of the territory.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "regions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "label": {"type": "string"},
+                        "color": {"type": "string"},
+                    },
+                    "required": ["id", "label"],
+                },
+            },
+            "nodes": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "label": {"type": "string"},
+                        "region": {"type": "string"},
+                        "weight": {
+                            "type": "number",
+                            "description": "0-1, where larger = more central/important",
+                        },
+                        "x": {"type": "number", "description": "0-1 hint"},
+                        "y": {"type": "number", "description": "0-1 hint"},
+                        "summary": {"type": "string"},
+                    },
+                    "required": ["id", "label", "region", "weight"],
+                },
+            },
+            "edges": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "from": {"type": "string"},
+                        "to": {"type": "string"},
+                        "kind": {
+                            "type": "string",
+                            "enum": ["prereq", "supports", "specializes", "contrasts"],
+                        },
+                    },
+                    "required": ["from", "to", "kind"],
+                },
+            },
+        },
+        "required": ["regions", "nodes", "edges"],
+    },
+}
+
+
+KNOWLEDGE_GRAPH_SYSTEM = """You map the conceptual territory of a subject. Group
+related concepts into 3–5 regions; place 20–60 nodes across them with weights
+reflecting centrality. Provide x/y hints in [0,1] for layout. Edges are typed:
+'prereq', 'supports', 'specializes', 'contrasts'."""
+
+
+async def generate_knowledge_graph(
+    *, model: ModelAlias, source_text: str, title: str
+) -> dict[str, Any]:
+    user = (
+        f"Title: {title}\n\nMap the territory of these sources. Use 3-5 regions, "
+        f"20-60 nodes, weights ∈ [0,1].\n\n{source_text}"
+    )
+    client = get_client()
+    resp = await client.messages.create(
+        model=MODEL_IDS[model],
+        max_tokens=8000,
+        temperature=0.3,
+        system=KNOWLEDGE_GRAPH_SYSTEM,
+        tools=[KNOWLEDGE_GRAPH_TOOL],
+        tool_choice={"type": "tool", "name": "emit_knowledge_graph"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for b in resp.content:
+        if getattr(b, "type", "") == "tool_use" and b.name == "emit_knowledge_graph":
+            return {
+                "version": 1, **b.input,
+                "tokens_in": resp.usage.input_tokens,
+                "tokens_out": resp.usage.output_tokens,
+            }
+    raise RuntimeError("no knowledge graph emitted")
+
+
+# ---------- simulation (timed test) ----------
+
+
+SIMULATION_TOOL = {
+    "name": "emit_simulation",
+    "description": "Emit a realistic timed test simulation.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "config": {
+                "type": "object",
+                "properties": {
+                    "duration_min": {"type": "integer"},
+                    "n_questions": {"type": "integer"},
+                    "rubric_mode": {"type": "string", "enum": ["ai-grade", "self"]},
+                },
+                "required": ["duration_min", "n_questions", "rubric_mode"],
+            },
+            "instructions": {"type": "string"},
+            "questions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "type": {
+                            "type": "string",
+                            "enum": ["short_answer", "mcq", "proof_sketch", "essay"],
+                        },
+                        "prompt": {"type": "string"},
+                        "choices": {"type": "array", "items": {"type": "string"}},
+                        "correct_index": {"type": "integer"},
+                        "expected": {"type": "string"},
+                        "rubric": {"type": "string"},
+                        "points": {"type": "integer"},
+                        "topic": {"type": "string"},
+                        "difficulty": {"type": "number"},
+                    },
+                    "required": ["id", "type", "prompt", "topic", "points"],
+                },
+            },
+        },
+        "required": ["config", "questions"],
+    },
+}
+
+
+SIMULATION_SYSTEM = """You construct realistic timed test simulations. Spread
+difficulty intentionally (start gentle, peak in the middle, end with a big
+applied question). Vary question types. Provide rubric for short_answer/proof
+questions; correct_index for MCQ. Keep total points coherent (e.g., 100)."""
+
+
+async def generate_simulation(
+    *,
+    model: ModelAlias,
+    source_text: str,
+    title: str,
+    duration_min: int = 90,
+    n_questions: int = 12,
+    rubric_mode: str = "ai-grade",
+) -> dict[str, Any]:
+    user = (
+        f"Title: {title}\n\nGenerate a {duration_min}-minute simulation with "
+        f"{n_questions} questions ({rubric_mode}).\n\n{source_text}"
+    )
+    client = get_client()
+    resp = await client.messages.create(
+        model=MODEL_IDS[model],
+        max_tokens=8000,
+        temperature=0.5,
+        system=SIMULATION_SYSTEM,
+        tools=[SIMULATION_TOOL],
+        tool_choice={"type": "tool", "name": "emit_simulation"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for b in resp.content:
+        if getattr(b, "type", "") == "tool_use" and b.name == "emit_simulation":
+            return {
+                "version": 1, **b.input,
+                "tokens_in": resp.usage.input_tokens,
+                "tokens_out": resp.usage.output_tokens,
+            }
+    raise RuntimeError("no simulation emitted")
+
+
+# ---------- grading ----------
+
+
+GRADE_TOOL = {
+    "name": "emit_grade",
+    "description": "Grade an attempt and identify weak topics.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "score": {"type": "number", "description": "0-100 normalized"},
+            "per_question": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "earned": {"type": "number"},
+                        "max": {"type": "number"},
+                        "feedback": {"type": "string"},
+                    },
+                    "required": ["id", "earned", "max"],
+                },
+            },
+            "weak_topics": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {"type": "string"},
+                        "confidence": {
+                            "type": "number",
+                            "description": "0-1, lower means weaker",
+                        },
+                    },
+                    "required": ["topic", "confidence"],
+                },
+            },
+            "summary": {"type": "string"},
+        },
+        "required": ["score", "per_question", "weak_topics"],
+    },
+}
+
+
+GRADE_SYSTEM = """You grade student attempts against rubrics. Be fair and
+specific. Identify weak_topics (confidence < 0.6) so the next practice set
+can target them. Score is normalized to 0-100."""
+
+
+async def grade_attempt(
+    *,
+    artifact_payload: dict[str, Any],
+    responses: dict[str, Any],
+    duration_sec: int | None,
+) -> dict[str, Any]:
+    questions = artifact_payload.get("questions", [])
+    items: list[str] = []
+    for q in questions:
+        qid = q["id"]
+        ans = responses.get(qid, "")
+        items.append(
+            f"[{qid}] ({q['type']}) {q['prompt']}\n"
+            f"  topic: {q.get('topic')}\n"
+            f"  rubric: {q.get('rubric','')}\n"
+            f"  expected: {q.get('expected','')}\n"
+            f"  user_response: {ans}\n"
+        )
+    user = "Grade this attempt:\n\n" + "\n".join(items)
+
+    client = get_client()
+    resp = await client.messages.create(
+        model=MODEL_IDS["sonnet"],
+        max_tokens=4000,
+        temperature=0.2,
+        system=GRADE_SYSTEM,
+        tools=[GRADE_TOOL],
+        tool_choice={"type": "tool", "name": "emit_grade"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for b in resp.content:
+        if getattr(b, "type", "") == "tool_use" and b.name == "emit_grade":
+            return {
+                **b.input,
+                "tokens_in": resp.usage.input_tokens,
+                "tokens_out": resp.usage.output_tokens,
+            }
+    raise RuntimeError("no grade emitted")

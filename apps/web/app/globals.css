@@ -1,0 +1,138 @@
+/* ESUI — global stylesheet
+ * Ports the v2 stylesheet (which is a superset of v1) plus the keyframes
+ * the design files originally injected from JS. Every CSS variable referenced
+ * by any *.jsx in design_extract/ resolves here.
+ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* surfaces */
+  --page:    #f2ede5;
+  --surface: #ffffff;
+  --border:  #e6dfd4;
+
+  /* navy text */
+  --navy:    #1c1f2e;
+  --navy-70: rgba(28,31,46,.70);
+  --navy-60: rgba(28,31,46,.60);
+  --navy-45: rgba(28,31,46,.45);
+  --navy-35: rgba(28,31,46,.35);
+  --navy-20: rgba(28,31,46,.20);
+  --navy-15: rgba(28,31,46,.15);
+  --navy-10: rgba(28,31,46,.10);
+  --navy-08: rgba(28,31,46,.08);
+
+  /* accents */
+  --sky:           #5b9ab8;
+  --sky-light:     #e8f2f8;
+  --sky-deep:      #3d7a96;
+  --sky-bg:        rgba(91,154,184,.12);
+  --sky-border:    rgba(91,154,184,.30);
+
+  --forest:        #3e6f54;
+  --forest-light:  #e4f0e9;
+  --forest-deep:   #2d5440;
+  --forest-bg:     rgba(62,111,84,.12);
+  --forest-border: rgba(62,111,84,.30);
+
+  --amber:        #8c6b3a;
+  --amber-light:  #f4ead9;
+  --rose:         #b05068;
+  --rose-light:   #f5e4ea;
+  --indigo:       #3a3d70;
+  --indigo-light: #e8e9f5;
+
+  /* v1 alias names — used by widget files */
+  --vanilla:        #f8f3ec;
+  --vanilla-2:      #f0ebe2;
+  --vanilla-border: #e4ddd3;
+  --white:          #ffffff;
+
+  /* type */
+  --sans:  'Inter', system-ui, sans-serif;
+  --serif: 'Source Serif 4', Georgia, serif;
+
+  /* radii */
+  --r:  20px;
+  --rs: 10px;
+
+  /* shadows */
+  --shadow-card:  0 1px 2px rgba(28,31,46,.04), 0 4px 16px rgba(28,31,46,.07);
+  --shadow-hover: 0 2px 6px rgba(28,31,46,.06), 0 12px 40px rgba(28,31,46,.12);
+}
+
+html, body, #__next {
+  width: 100%;
+  height: 100%;
+  font-family: var(--sans);
+  background: var(--page);
+  color: var(--navy);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  color: inherit;
+}
+
+input, textarea {
+  font-family: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  outline: none;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* keyframes — used directly via `animation:` in inline styles
+   and via the helper classes below. */
+@keyframes fadeUp   { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+@keyframes fadeIn   { from { opacity:0; } to { opacity:1; } }
+@keyframes slideR   { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:none; } }
+@keyframes corner   { from { opacity:0; transform:translateY(12px) scale(.96); } to { opacity:1; transform:none; } }
+@keyframes blink    { 0%,100%{opacity:1} 50%{opacity:0} }
+@keyframes pulse    { 0%,100%{opacity:.6} 50%{opacity:1} }
+@keyframes spin     { to { transform:rotate(360deg); } }
+@keyframes shimmer  { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+@keyframes stagger  { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
+
+/* keyframes from esui-home.jsx (originally injected from JS) */
+@keyframes floatY    { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+@keyframes floatY2   { 0%,100%{transform:translateY(-4px)} 50%{transform:translateY(2px)} }
+@keyframes growBar   { from{width:0} }
+@keyframes pulseGlow { 0%,100%{box-shadow:0 0 0 0 transparent} 50%{box-shadow:0 0 12px 3px currentColor} }
+@keyframes borderIn  { from{transform:scaleY(0)} to{transform:scaleY(1)} }
+
+/* helper classes referenced by both v1 and v2 designs */
+.anim-fade-up  { animation: fadeUp .18s ease forwards; }
+.anim-slide-r  { animation: slideR .22s ease forwards; }
+.anim-corner   { animation: corner .4s cubic-bezier(.34,1.56,.64,1) forwards; }
+.fu  { animation: fadeUp .22s ease both; }
+.sr  { animation: slideR .22s ease both; }
+.cor { animation: corner .4s cubic-bezier(.34,1.56,.64,1) both; }
+.sig-card-border { transform-origin: top; animation: borderIn .5s ease both; }
+.float-a { animation: floatY  4.5s ease-in-out infinite; }
+.float-b { animation: floatY2 5.2s ease-in-out infinite; }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--vanilla-2) 25%, var(--vanilla-border) 50%, var(--vanilla-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

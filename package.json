@@ -1,0 +1,19 @@
+{
+  "name": "esui",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n web,api -c blue,green \"pnpm --filter web dev\" \"pnpm --filter api dev\"",
+    "build": "pnpm --filter web build",
+    "lint": "pnpm --filter web lint",
+    "db:up": "docker compose up -d db redis",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d db redis && node -e \"setTimeout(()=>{},3000)\" && pnpm db:migrate",
+    "db:migrate": "pnpm --filter api migrate",
+    "db:revision": "pnpm --filter api revision"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "packageManager": "pnpm@9.12.0"
+}
