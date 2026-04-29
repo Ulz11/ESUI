@@ -88,25 +88,53 @@ CHEATSHEET_TOOL = {
 }
 
 
-CHEATSHEET_SYSTEM = """You produce intelligence-dense cheatsheets for serious students.
-Compress lecture notes / readings into a small number of sections (Definitions,
-Theorems, Pitfalls, Worked Examples). Each item is a short markdown blurb —
-crisp, exam-ready, without filler. Quote only when precision matters."""
+CHEATSHEET_SYSTEM_ULZII = """You produce intelligence-dense cheatsheets for a
+sharp student studying for understanding, not memorization.
+
+Structure around EPISTEMIC SHAPE. Default sections:
+  - Foundations         (the load-bearing definitions / axioms)
+  - Theorems & Proofs   (statement → intuition → proof sketch)
+  - Dependencies        (what depends on what; the prerequisite map)
+  - Pitfalls            (where students mistake X for Y)
+  - Worked Examples     (one or two that exercise the structure)
+
+Each item is a tight markdown blurb. Use *italics* for the load-bearing word.
+Quote primary sources when precision matters. Do not invent citations."""
+
+
+CHEATSHEET_SYSTEM_OBAMA = """You produce intelligence-dense cheatsheets for a
+practitioner who needs to ACT on the material — not just understand it.
+
+Structure around APPLIED LEVERAGE. Default sections:
+  - The 3-line summary  (what this is, why it matters, what to do)
+  - Decision Points     (when to apply X vs Y; tradeoff per option)
+  - Action Templates    (concrete steps / checklists / ready-to-use snippets)
+  - Failure Modes       (how this breaks in practice; what to watch for)
+  - Worked Example      (one realistic application, end-to-end)
+
+Each item is a tight markdown blurb. Recommendation-first. Skip preamble.
+Quantify when it sharpens; hand-wave when premature precision is fake."""
 
 
 async def generate_cheatsheet(
-    *, model: ModelAlias, source_text: str, title: str
+    *,
+    model: ModelAlias,
+    source_text: str,
+    title: str,
+    mode: str = "ulzii",
 ) -> dict[str, Any]:
+    sys_prompt = CHEATSHEET_SYSTEM_OBAMA if mode == "obama" else CHEATSHEET_SYSTEM_ULZII
+    section_target = "5 sections" if mode == "ulzii" else "5 sections"
     user = (
         f"Title: {title}\n\nProduce a cheatsheet from these sources:\n\n{source_text}\n\n"
-        "Use 3–5 sections. Each section has 4–10 items. Keep it tight."
+        f"Use {section_target}. Each section has 3–8 items. Keep it tight."
     )
     client = get_client()
     resp = await client.messages.create(
         model=MODEL_IDS[model],
         max_tokens=8000,
         temperature=0.3,
-        system=CHEATSHEET_SYSTEM,
+        system=sys_prompt,
         tools=[CHEATSHEET_TOOL],
         tool_choice={"type": "tool", "name": "emit_cheatsheet"},
         messages=[{"role": "user", "content": user}],

@@ -10,7 +10,6 @@ import { ExamWidget } from "./widgets/ExamWidget";
 import { SignalsWidget } from "./widgets/SignalsWidget";
 import { TogetherWidget } from "./widgets/TogetherWidget";
 import { SettingsDrawer } from "./widgets/SettingsDrawer";
-import { TogetherPromptCard } from "./widgets/TogetherPromptCard";
 import { useAuthStore } from "@/lib/auth-store";
 import type { Mode } from "@/lib/types";
 
@@ -64,7 +63,6 @@ export function AppShell({ initialRoute = "home" }: { initialRoute?: RouteId }) 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark" | "system">("light");
   const [mode, setMode] = useState<Mode>(user?.default_mode || "ulzii");
-  const [promptOn, setPromptOn] = useState(true);
 
   // sync local mode with persisted user preference once available
   useEffect(() => {
@@ -168,9 +166,6 @@ export function AppShell({ initialRoute = "home" }: { initialRoute?: RouteId }) 
         />
       )}
 
-      {route !== "together" && route !== "exam" && promptOn && user?.role === "esui" && (
-        <TogetherPromptCard onDismiss={() => setPromptOn(false)} />
-      )}
     </div>
   );
 }

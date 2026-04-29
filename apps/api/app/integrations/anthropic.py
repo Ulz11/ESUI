@@ -22,11 +22,17 @@ from app.core.config import settings
 
 ModelAlias = Literal["opus", "sonnet", "haiku"]
 
-MODEL_IDS: dict[ModelAlias, str] = {
-    "opus": "claude-opus-4-7",
-    "sonnet": "claude-sonnet-4-6",
-    "haiku": "claude-haiku-4-5",
-}
+
+def _ids() -> dict[ModelAlias, str]:
+    """Resolved at import time — bump model IDs via env vars without code change."""
+    return {
+        "opus": settings.opus_model_id,
+        "sonnet": settings.sonnet_model_id,
+        "haiku": settings.haiku_model_id,
+    }
+
+
+MODEL_IDS: dict[ModelAlias, str] = _ids()
 
 _client: AsyncAnthropic | None = None
 

@@ -1,279 +1,238 @@
-"""Signals — current cycle, pin to vault, share to chat, dismiss."""
+"""Signals — Esui's curated quote feed.
+
+She drops in quotes from her reading. Four categories, locked:
+
+  - mathematics            Mathematics for Human Flourishing — Francis Su
+  - arabic_philosophy      Arabic / Arabian philosophy
+  - chinese_philosophy     Chinese philosophy
+  - elements_of_ai         Elements of AI course (elementsofai.com)
+
+Each quote persists. She can delete any quote. She can pin a quote into the
+Vault if she wants it surfaced in chat retrieval.
+"""
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import current_user
 from app.core.db import get_session
-from app.core.errors import not_found
-from app.models import (
-    ConversationParticipant,
-    Message,
-    Signal,
-    SignalEngagement,
-    SignalPin,
-    User,
-    VaultDocument,
-)
+from app.core.errors import bad_request, not_found
+from app.models import Signal, SignalPin, User, VaultDocument
 
 router = APIRouter(prefix="/signals", tags=["signals"])
+
+
+VALID_CATEGORIES = {
+    "mathematics",
+    "arabic_philosophy",
+    "chinese_philosophy",
+    "elements_of_ai",
+}
 
 
 # ---------- schemas ----------
 
 
-class SignalOut(BaseModel):
+class QuoteOut(BaseModel):
     id: str
     category: str
     title: str
     body: str
     source_url: str | None
     source_name: str | None
-    fetched_at: datetime
-    expires_at: datetime
+    created_at: datetime
 
 
-class CycleOut(BaseModel):
-    cycle_id: str | None
-    refreshed_at: datetime | None
-    expires_at: datetime | None
-    items: list[SignalOut]
+class QuoteCreate(BaseModel):
+    category: str
+    body: str = Field(..., min_length=1)
+    title: str | None = None
+    source_url: str | None = None
+    source_name: str | None = None
 
 
-class ShareToChatRequest(BaseModel):
-    conversation_id: str
+class QuotePatch(BaseModel):
+    title: str | None = None
+    body: str | None = None
+    source_url: str | None = None
+    source_name: str | None = None
+    category: str | None = None
 
 
-def _sig_out(s: Signal) -> SignalOut:
-    return SignalOut(
+def _q_out(s: Signal) -> QuoteOut:
+    return QuoteOut(
         id=str(s.id),
         category=s.category,
         title=s.title,
         body=s.body,
         source_url=s.source_url,
         source_name=s.source_name,
-        fetched_at=s.fetched_at,
-        expires_at=s.expires_at,
+        created_at=s.fetched_at,
     )
 
 
-# ---------- current cycle ----------
+def _derive_title(body: str, max_len: int = 80) -> str:
+    """First sentence (or first 80 chars) of the quote, used when title omitted."""
+    text = body.strip().replace("\n", " ")
+    for sep in (". ", "? ", "! "):
+        if sep in text[:max_len + 20]:
+            head = text.split(sep, 1)[0]
+            return (head + sep.rstrip()).strip()[:max_len]
+    return text[:max_len].rstrip()
 
 
-@router.get("/current", response_model=CycleOut)
-async def get_current_cycle(
+def _default_source_for(category: str) -> str | None:
+    return {
+        "mathematics": "Francis Su · Mathematics for Human Flourishing",
+        "arabic_philosophy": "Arabic philosophy",
+        "chinese_philosophy": "Chinese philosophy",
+        "elements_of_ai": "Elements of AI · elementsofai.com",
+    }.get(category)
+
+
+# ---------- endpoints ----------
+
+
+@router.get("", response_model=list[QuoteOut])
+async def list_quotes(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
-) -> CycleOut:
-    # Latest cycle = highest fetched_at
-    latest = (await session.execute(
-        select(Signal.cycle_id, Signal.fetched_at, Signal.expires_at)
-        .order_by(desc(Signal.fetched_at))
-        .limit(1)
-    )).first()
-    if latest is None:
-        return CycleOut(cycle_id=None, refreshed_at=None, expires_at=None, items=[])
+    category: str | None = None,
+    limit: int = 200,
+) -> list[QuoteOut]:
+    q = select(Signal)
+    if category:
+        if category not in VALID_CATEGORIES:
+            raise bad_request(f"unknown category: {category}")
+        q = q.where(Signal.category == category)
+    q = q.order_by(desc(Signal.fetched_at)).limit(min(limit, 500))
+    rows = await session.execute(q)
+    return [_q_out(s) for s in rows.scalars().all()]
 
-    rows = (await session.execute(
-        select(Signal)
-        .where(Signal.cycle_id == latest.cycle_id)
-    )).scalars().all()
 
-    items = await _personalize_order(session, user.id, list(rows))
+@router.post("", response_model=QuoteOut, status_code=201)
+async def add_quote(
+    body: QuoteCreate,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> QuoteOut:
+    if body.category not in VALID_CATEGORIES:
+        raise bad_request(
+            "category must be one of: "
+            + ", ".join(sorted(VALID_CATEGORIES))
+        )
 
-    return CycleOut(
-        cycle_id=str(latest.cycle_id),
-        refreshed_at=latest.fetched_at,
-        expires_at=latest.expires_at,
-        items=items,
+    title = (body.title or "").strip() or _derive_title(body.body)
+    sig = Signal(
+        category=body.category,
+        title=title[:200],
+        body=body.body.strip(),
+        source_url=(body.source_url or None),
+        source_name=(body.source_name or _default_source_for(body.category)),
+        # expires_at + cycle_id intentionally NULL — quotes don't expire / don't cycle.
+        provider="manual",
     )
+    session.add(sig)
+    await session.commit()
+    return _q_out(sig)
 
 
-# ---------- per-user ranking ----------
+@router.get("/{signal_id}", response_model=QuoteOut)
+async def get_quote(
+    signal_id: UUID,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> QuoteOut:
+    s = await session.get(Signal, signal_id)
+    if s is None:
+        raise not_found("quote")
+    return _q_out(s)
 
 
-async def _personalize_order(
-    session: AsyncSession, user_id: UUID, signals: list[Signal]
-) -> list[SignalOut]:
-    """Group by category, then within each category order by personal score."""
-    from sqlalchemy import text as _t
-
-    pin_rows = (await session.execute(_t("""
-        SELECT s.embedding
-        FROM signal_engagements e
-        JOIN signals s ON s.id = e.signal_id
-        WHERE e.user_id = :uid
-          AND e.action = 'pin'
-          AND e.created_at > now() - interval '60 days'
-          AND s.embedding IS NOT NULL
-    """), {"uid": str(user_id)})).all()
-
-    dismiss_rows = (await session.execute(_t("""
-        SELECT s.embedding
-        FROM signal_engagements e
-        JOIN signals s ON s.id = e.signal_id
-        WHERE e.user_id = :uid
-          AND e.action = 'dismiss'
-          AND e.created_at > now() - interval '30 days'
-          AND s.embedding IS NOT NULL
-    """), {"uid": str(user_id)})).all()
-
-    interest_vec = _avg_vec([list(r[0]) for r in pin_rows])
-    avoid_vec = _avg_vec([list(r[0]) for r in dismiss_rows])
-
-    def _score(s: Signal) -> float:
-        if s.embedding is None:
-            return 0.0
-        sv = list(s.embedding)
-        score = 0.0
-        if interest_vec:
-            score += 0.7 * _cosine(sv, interest_vec)
-        if avoid_vec:
-            score -= 0.3 * _cosine(sv, avoid_vec)
-        return score
-
-    by_cat: dict[str, list[Signal]] = {}
-    for s in signals:
-        by_cat.setdefault(s.category, []).append(s)
-
-    ordered: list[SignalOut] = []
-    for cat in sorted(by_cat):
-        in_cat = sorted(by_cat[cat], key=_score, reverse=True)
-        ordered.extend(_sig_out(s) for s in in_cat)
-    return ordered
+@router.patch("/{signal_id}", response_model=QuoteOut)
+async def update_quote(
+    signal_id: UUID,
+    body: QuotePatch,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> QuoteOut:
+    s = await session.get(Signal, signal_id)
+    if s is None:
+        raise not_found("quote")
+    if body.title is not None:
+        s.title = body.title.strip()[:200] or _derive_title(s.body)
+    if body.body is not None:
+        s.body = body.body.strip()
+    if body.source_url is not None:
+        s.source_url = body.source_url or None
+    if body.source_name is not None:
+        s.source_name = body.source_name or None
+    if body.category is not None:
+        if body.category not in VALID_CATEGORIES:
+            raise bad_request(f"unknown category: {body.category}")
+        s.category = body.category
+    await session.commit()
+    return _q_out(s)
 
 
-def _avg_vec(vecs: list[list[float]]) -> list[float] | None:
-    if not vecs:
-        return None
-    n = len(vecs)
-    dim = len(vecs[0])
-    out = [0.0] * dim
-    for v in vecs:
-        for i, x in enumerate(v):
-            out[i] += x
-    return [x / n for x in out]
-
-
-def _cosine(a: list[float], b: list[float]) -> float:
-    if not a or not b:
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    na = sum(x * x for x in a) ** 0.5
-    nb = sum(x * x for x in b) ** 0.5
-    if na == 0 or nb == 0:
-        return 0.0
-    return dot / (na * nb)
-
-
-# ---------- engagement ----------
-
-
-@router.post("/{signal_id}/open", status_code=204)
-async def signal_open(
+@router.delete("/{signal_id}", status_code=204)
+async def delete_quote(
     signal_id: UUID,
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    sig = await session.get(Signal, signal_id)
-    if sig is None:
-        raise not_found("signal")
-    session.add(SignalEngagement(signal_id=signal_id, user_id=user.id, action="open"))
+    s = await session.get(Signal, signal_id)
+    if s is None:
+        raise not_found("quote")
+    await session.delete(s)
     await session.commit()
 
 
-@router.post("/{signal_id}/dismiss", status_code=204)
-async def signal_dismiss(
-    signal_id: UUID,
-    user: User = Depends(current_user),
-    session: AsyncSession = Depends(get_session),
-) -> None:
-    sig = await session.get(Signal, signal_id)
-    if sig is None:
-        raise not_found("signal")
-    session.add(SignalEngagement(signal_id=signal_id, user_id=user.id, action="dismiss"))
-    await session.commit()
+# ---------- pin to vault ----------
 
 
 @router.post("/{signal_id}/pin", response_model=dict[str, str])
-async def signal_pin(
+async def pin_to_vault(
     signal_id: UUID,
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, str]:
-    sig = await session.get(Signal, signal_id)
-    if sig is None:
-        raise not_found("signal")
+    """Save the quote as a Vault document so it shows up in chat retrieval."""
+    s = await session.get(Signal, signal_id)
+    if s is None:
+        raise not_found("quote")
 
-    # Already pinned?
-    existing = await session.execute(
+    existing = (await session.execute(
         select(SignalPin).where(
             SignalPin.signal_id == signal_id, SignalPin.user_id == user.id
         )
-    )
-    pin = existing.scalar_one_or_none()
-    if pin is not None:
-        return {"vault_document_id": str(pin.vault_document_id)}
+    )).scalar_one_or_none()
+    if existing is not None:
+        return {"vault_document_id": str(existing.vault_document_id)}
 
-    # Create vault doc
+    body_md = s.body
+    if s.source_name:
+        body_md += f"\n\n— {s.source_name}"
+    if s.source_url:
+        body_md += f" · [{s.source_url}]({s.source_url})"
+
     doc = VaultDocument(
         owner_id=user.id,
-        title=sig.title,
-        content_md=f"{sig.body}\n\n— [{sig.source_name or 'source'}]({sig.source_url or '#'})",
+        title=s.title,
+        content_md=body_md,
         content_type="reference",
     )
     session.add(doc)
     await session.flush()
-
     session.add(SignalPin(
         signal_id=signal_id, user_id=user.id, vault_document_id=doc.id,
     ))
-    session.add(SignalEngagement(
-        signal_id=signal_id, user_id=user.id, action="pin",
-    ))
     await session.commit()
     return {"vault_document_id": str(doc.id)}
-
-
-@router.post("/{signal_id}/share-to-chat", response_model=dict[str, str])
-async def signal_share_to_chat(
-    signal_id: UUID,
-    body: ShareToChatRequest,
-    user: User = Depends(current_user),
-    session: AsyncSession = Depends(get_session),
-) -> dict[str, str]:
-    sig = await session.get(Signal, signal_id)
-    if sig is None:
-        raise not_found("signal")
-    conv_id = UUID(body.conversation_id)
-
-    p = await session.execute(
-        select(ConversationParticipant).where(
-            ConversationParticipant.conversation_id == conv_id,
-            ConversationParticipant.user_id == user.id,
-        )
-    )
-    if p.scalar_one_or_none() is None:
-        raise not_found("conversation")
-
-    msg = Message(
-        conversation_id=conv_id,
-        sender_type="user",
-        sender_user_id=user.id,
-        content_blocks=[{"type": "signal_card", "signal_id": str(signal_id)}],
-        status="complete",
-    )
-    session.add(msg)
-    session.add(SignalEngagement(
-        signal_id=signal_id, user_id=user.id, action="share_to_chat",
-    ))
-    await session.commit()
-    return {"message_id": str(msg.id)}

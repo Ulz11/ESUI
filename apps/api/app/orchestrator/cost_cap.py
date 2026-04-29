@@ -18,11 +18,17 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.redis import get_redis
 
-# Per-1M-token prices in USD (approximate; adjust as Anthropic pricing moves).
+# Per-1M-token prices in USD (approximate). Tune as provider pricing moves.
 _PRICES: dict[str, tuple[float, float]] = {
-    "opus": (15.0, 75.0),     # $/1M input, $/1M output
-    "sonnet": (3.0, 15.0),
-    "haiku": (1.0, 5.0),
+    # Anthropic
+    "opus":                  (15.0, 75.0),
+    "sonnet":                (3.0, 15.0),
+    "haiku":                 (1.0, 5.0),
+    # Google
+    "gemini":                (3.5, 10.5),
+    # Perplexity Sonar
+    "perplexity-research":   (5.0, 25.0),   # deep research is expensive
+    "perplexity-reasoning":  (3.0, 15.0),
 }
 
 

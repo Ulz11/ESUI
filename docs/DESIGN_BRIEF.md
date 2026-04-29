@@ -1,512 +1,173 @@
-# ESUI — Frontend Design Brief
-
-You are designing the entire frontend of ESUI, a private AI workspace for two users in love. The backend is built and runs at `NEXT_PUBLIC_API_URL` (REST) and `NEXT_PUBLIC_WS_URL` (Socket.io). Your job is the experience: the soul, the surfaces, the way it feels.
-
-This brief is self-contained. You don't need to read the architecture docs — everything required to build is below.
+# ESUI — Project Brief for Claude Code
 
 ---
 
-## 1. What this is
+## What is ESUI
 
-**ESUI is a private AI workspace for exactly two users:** Esui (the primary user) and her boyfriend Badrushk (long-distance). Five widgets share one memory layer:
+ESUI is a private, web-based AI workspace built for one primary user: **Esui**. It is named after her.
 
-- **Chat** — persistent dual-user conversation with AI as a third voice
-- **Exam** — compresses study materials into intelligence-dense artifacts
-- **Vault** — semantic knowledge repository, knowledge graph view
-- **Together Photos** — composited "as if together" photos for the long-distance relationship
-- **Signals** — curated wisdom feed refreshed every 6 hours
+It is not a productivity tool. It is a personal cognitive operating system — a private sanctuary where she can think, learn, create, and live her intellectual life, powered by the best AI available.
 
-Two AI personas reshape how every widget thinks:
-
-- **Ulzii Mode** — named after Badrushk's real name. The intellectual companion. Theory-of-knowledge analyst. Patient, structured, epistemic.
-- **Obama Mode** — named after Badrushk's nickname. The strategic co-pilot. Founder's mindset. Recommendation-first, decisive.
-
-Esui chooses a mode per message. The mode shapes the AI's voice and which model runs. Ulzii skews Sky Blue (cooler, contemplative). Obama skews Forest Green (warmer, decisive).
-
-This is not a productivity tool. It is her **personal cognitive operating system** and a **shared sanctuary** with Badrushk. Every detail you put care into is a small letter to her.
+The product is built by her boyfriend, **Badrushk** (real name Ulzii, nickname Obama). They are a long-distance couple. The two AI model personas inside ESUI are named after him — **Ulzii** and **Obama** — so when she uses the AI, she is in a sense choosing how her boyfriend thinks with her.
 
 ---
 
-## 2. Who you're designing for
+## Users
 
-**Esui** — the primary user. Sharp. Reads philosophy in two languages. Builds and ships. Cares about how things feel. She doesn't want a tool. She wants a private study with a window.
+**Esui** is the primary user. She uses every part of the workspace.
 
-**Badrushk** — also signs in, also uses every widget. Together Photos exists because they are long-distance. Treat both as first-class users; the experience is designed around Esui but Badrushk has the same rights everywhere except the Together prompt (which surfaces only to Esui).
+**Badrushk** also has access. It is a shared private workspace for the two of them — private chat, shared documents, shared photos, shared knowledge. But the experience is designed around Esui.
 
-Treat them as a unit when context suggests it. Be warm.
+There are exactly two accounts. No one else can access this system.
 
 ---
 
-## 3. Design philosophy
+## AI Model System
 
-**Calm.** Nothing fights for her attention. The interface is quiet, purposeful.
+When Esui interacts with AI anywhere in the workspace — in Chat, in Exam, in Vault — she can choose between two AI model modes:
 
-**Minimal.** No clutter. Every element earns its place. Whitespace is a feature.
+**Obama Mode**
+Named after Badrushk's nickname. This is the business and technology thinking style. When she activates Obama Mode, the AI thinks like a founder and strategist. It produces market research, competitive analysis, system architecture, tech stack recommendations, and three-scenario simulations (conservative, base, aggressive). It is a co-pilot for building things and making decisions.
 
-**Intellectual.** The aesthetic matches the content — serious, beautiful tool for a serious, curious person.
+**Ulzii Mode**
+Named after Badrushk's real name. This is the intellectual and philosophical thinking style. When she activates Ulzii Mode, the AI thinks like a Theory of Knowledge analyst and learning architect. It produces epistemic maps, structured understanding, quality reasoning paths, and concept visualizations. It is a co-pilot for understanding things deeply and learning the right way.
+
+She switches between them with a simple toggle. The mode she selects applies to the current session. Both modes use intelligent model routing under the hood — the system selects the best AI model (Anthropic, Gemini, Kimi) based on the task, automatically.
+
+---
+
+## The Five Widgets
+
+### Chat
+
+The heart of the workspace. A persistent, private conversation between Esui, Badrushk, and AI.
+
+The chat has memory. It remembers everything across sessions — past conversations, decisions, ideas, files. When she opens a new conversation, the AI already knows the context of her life and work. She never has to repeat herself.
+
+She can import files — PDFs, documents, images — directly into the conversation. The AI reads and reasons over them.
+
+Conversations are organized in a timeline, day by day. She can search across all history. She can branch any conversation in a new direction without losing the original. She can pin a project context so the AI always has that project in mind.
+
+Both Esui and Badrushk can chat together in real time, with the AI as a third participant. When Badrushk is typing, she sees it. When the AI is thinking, she sees it. Everything happens live.
+
+### Exam
+
+A learning compression engine. Esui uploads her lecture notes, reading materials, topic outlines, or exercises — and the AI transforms them into intelligence-dense study artifacts.
+
+What it produces:
+- Cheat sheets — maximum information, minimum noise, exactly what she needs for an exam
+- Concept maps — visual diagrams showing how ideas connect and depend on each other
+- Practice questions — adaptive, calibrated to her knowledge gaps, getting harder as she improves
+- Knowledge graphs — Voronoi-style visualizations of the conceptual territory she is covering
+- Full exam simulations — timed, realistic, with scoring and analysis of weak areas
+
+The goal is not to study more. It is to study smarter. Every uploaded document becomes a structured intelligence artifact she can use immediately.
+
+### Vault
+
+Her private knowledge repository. Everything she wants to keep, think about, or return to lives here.
+
+Notes. Research. Journals. Drafts. Ideas. Shared documents. Anything.
+
+The Vault is not a folder system. It has a semantic search engine — she searches by meaning, not by filename. She types a thought and the system finds everything related to it, across all her documents, instantly.
+
+The AI organizes her documents automatically — tagging, clustering related ideas, detecting connections between things she wrote months apart. There is a knowledge graph view that shows her documents as a network of ideas. She can see how her thinking is connected.
+
+The Vault feeds into Chat and Exam. When she is chatting or studying, the AI draws from her Vault automatically. Her own knowledge becomes part of the AI's context.
+
+### Together Photos
+
+The most personal feature. Built specifically because Esui and Badrushk are long-distance — they rarely get to take photos together.
+
+While Esui is working in the workspace, a soft moment prompt occasionally appears. It says something like: *"Badrushk wants to take a photo with you today."* She can skip it — and if she does, the system shows a gentle, warm message and disappears. She is never interrupted or pressured.
+
+If she uploads a photo, the system takes that photo and one of Badrushk's photos from the gallery and uses AI image compositing to make it look like they are together in the same scene. Real background removal, lighting matching, perspective alignment, and scene generation — the result looks like an actual photograph of them together.
+
+The composite is saved to the gallery with the date. Over time, the gallery becomes a timeline of moments they chose to be present in each other's day, even from across the world.
+
+The AI compositing uses external APIs — [Remove.bg](http://Remove.bg) for background removal, Stability AI for scene composition. No AI model needs to be trained. It is pure API orchestration.
+
+### Signals
+
+A curated intelligence feed that refreshes every 6 hours.
+
+Not a news feed. A wisdom stream. Each refresh brings a short, curated set of signals across six categories:
+
+- Global signals — what actually matters in the world, stripped of noise
+- Technology and market developments
+- Mathematics for human flourishing
+- Arabic philosophy and classical wisdom
+- Chinese philosophy and strategic thought
+- Curated research fragments
+
+Items are ephemeral — they disappear after 24 hours unless she saves them. She can pin any signal to her Vault for permanent storage. The system learns what she engages with and refines the curation over time.
+
+The goal is not to consume more information. It is to receive a small, curated dose of signal that she carries with her — something to think about, something to return to, something that expands the shape of her mind.
+
+---
+
+## Together Photos — Moment Prompt Details
+
+The prompt appears only in Esui's session. It is a soft, non-intrusive card in the corner of the screen — not a notification, not a popup. It slides in gently.
+
+If she skips, the system responds with a rotating pool of warm messages:
+- "saved for later — he's thinking of you"
+- "maybe tonight — the moment will wait"
+- "no rush. the gallery will still be here."
+- "another time — today is yours"
+
+The compositing pipeline runs in the background. She does not wait. When it is ready, the result appears in her gallery. The minimum gap between prompts is 6 hours. The prompt only appears when she is in a low-intensity session — never when she is deep in an exam or focused task.
+
+---
+
+## Design Philosophy
+
+**Calm.** Nothing fights for her attention. The interface is quiet and purposeful.
+
+**Minimal.** No clutter. Every element earns its place. The design should feel like it was made by someone who cared.
+
+**Intellectual.** The aesthetic matches the content — it feels like a serious, beautiful tool for a serious, curious person.
 
 **Warm.** This is a private space for two people who love each other. It should feel like that.
 
-**Reference points (vibe to chase):**
-- **Linear** — speed, calm, restraint
-- **Vercel** — developer elegance, monochrome confidence
-- **Arc Browser** — personality, warmth, identity
-- **Bear** — typography for prose
-- **Daylight Computer** — softness, low-stimulation
+The color system is Sky Blue, Vanilla, Navy, and Forest Green. Think of it as a private study that feels both calm and alive.
 
-**Vibes to avoid:**
-- Slack / Discord (too loud)
-- Notion 2024+ (too Yamaha-keyboard)
-- Gradient mesh backgrounds
-- Floating action buttons
-- Card shadows like a 2014 Material design
+Every interaction must feel smooth. Streaming AI text appears word by word, never a spinner. Transitions between pages are fluid. Loading states are always skeletons — never blank screens. Animations are purposeful and physically accurate. The experience should feel on another level compared to any AI tool she has used before.
 
 ---
 
-## 4. Color system
+## Technical Stack
 
-Four colors, intentionally chosen. Pick exact hex values that feel right to you; the intent is:
+**Frontend:** Next.js 14 (App Router), TypeScript strict, Tailwind CSS, Framer Motion, Zustand, TanStack Query, [Socket.io](http://Socket.io) Client, Radix UI.
 
-- **Sky Blue** — ambient, cool. Accents, links, **Ulzii mode** signaling.
-- **Vanilla** — warm, soft. Page surfaces, soft moments, the prompt card.
-- **Navy** — depth. Primary text, strong contrast borders.
-- **Forest Green** — grounded. Secondary accents, success, **Obama mode** signaling.
+**Backend:** Python 3.12, FastAPI, Pydantic v2, SQLAlchemy async, Alembic, Celery, Redis, [Socket.io](http://Socket.io).
 
-Aim for low chroma and harmony. Light theme is the default for warmth; a dark theme must feel equally curated, not just inverted.
+**Data:** PostgreSQL 16 with pgvector for semantic memory, Redis for caching and real-time, S3-compatible storage for files and photos.
 
-Use color sparingly. Most pixels are paper-and-ink (Vanilla and Navy). The accent colors are punctuation.
+**AI Models (routed automatically):**
+- Anthropic Claude Opus 4.7 
+- Anthropic Claude Sonnet 4.6
+- Google Gemini 3.1 Pro 
+- Moonshot AI Kimi 
 
----
+**Image APIs:** [Remove.bg](http://Remove.bg) (background removal), Stability AI SDXL (compositing), [FAL.ai](http://FAL.ai) (fast fallback).
 
-## 5. Typography
-
-A serif for reading; a sans for UI. Recommendations:
-
-- **Serif** — New York / Tiempos Text / Source Serif. Used for: chat content, vault notes, exam cheatsheet bodies.
-- **Sans** — Inter / Söhne / Geist. Used for: nav, controls, metadata, captions.
-
-Type scale: small steps. ESUI is read close, not from across the room. Avoid display-size headings except where they earn it.
-
-Italics matter — quote marks, annotations, "thinking" indicators. Make sure your sans has good italic support, or use the serif italic everywhere quotation appears.
+**Architecture:** Modular monolith for v1. Single FastAPI app with clearly separated service modules. Memory engine uses pgvector for semantic retrieval across all modules. AI router selects the best model per task — Esui never thinks about which model to use, only which mode (Ulzii or Obama).
 
 ---
 
-## 6. Motion language
+## The Memory Engine
 
-- **Spring physics**, realistic damping. Use Framer Motion (already in the stack).
-- **Page transitions** — subtle. Cross-fade with a small slide. ~250–300ms.
-- **Element appear** — opacity 0 → 1, scale 0.96 → 1.0. ~200ms.
-- **Streaming text** — token-by-token, never a spinner. The cursor blinks at the end of the latest text.
-- **Loading** — skeleton, never blank screens. Subtle pulse on bg-of-bg color.
-- **Reduce motion** — respect `prefers-reduced-motion`; replace transitions with cross-fade only.
+Every conversation, every document, every exam session writes to a shared memory layer. The memory is stored as vector embeddings in pgvector. Before every AI call, the system retrieves the most semantically relevant memories and injects them into context.
 
-The Together prompt is the most delicate motion. It slides in from a corner with a 400ms spring; on dismiss it fades and slightly contracts. Don't make it modal; never use the word "Cancel."
+This means the AI gets smarter about Esui over time. It remembers what she has studied, what she cares about, what decisions she has made, what she has written. Her workspace becomes increasingly personalized and contextually aware — not because she configured anything, but because it has been paying attention.
 
 ---
 
-## 7. Voice & copy
+## The Quality Bar
 
-The product talks to Esui like a thoughtful friend who knows her, not a chatbot.
+This is not a side project. It should feel like software that a small, obsessive team spent months perfecting. Reference points: Linear for speed and calm, Vercel for developer elegance, Arc for personality and warmth.
 
-- **Empty states** are warm: *"you haven't written anything here yet — start with whatever's on your mind"*
-- **Errors** are kind: *"we couldn't quite get that — try again?"* — never "ERROR 500" or "Something went wrong"
-- **System notices** are calm: *"saved for later — he's thinking of you"*
-- **Confirmations** are quiet: a small ✓ near the action, not a toast
+Every state has a skeleton. Every error has a human message. Every animation has correct physics. Every AI response streams. Every action feels instant. Nothing is slow. Nothing is broken. Nothing is ugly.
 
-Match Esui's register: literate, present, dignified. Never preachy. Never sycophantic. Never use exclamation marks except where genuinely warranted (almost never).
-
----
-
-## 8. Tech stack (locked)
-
-- **Framework:** Next.js 14 App Router, TypeScript strict
-- **Styling:** Tailwind CSS
-- **Animation:** Framer Motion
-- **State:** Zustand (client state), TanStack Query (server cache)
-- **Realtime:** `socket.io-client`
-- **A11y primitives:** Radix UI
-- **Markdown editor:** TipTap or Plate.js (your call)
-- **Icons:** Lucide
-- **Graph viz:** react-flow for concept maps, d3-force or react-force-graph for knowledge graphs
-
-Frontend env:
-```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_WS_URL=ws://localhost:8000
-NEXT_PUBLIC_APP_NAME=ESUI
-```
-
----
-
-## 9. Auth
-
-Allowlist-only. Two emails on the backend can sign in.
-
-Flow:
-```
-/login                  → email field
-                        → POST /api/v1/auth/magic-link  { email }
-                        → confirmation: "check your email"
-/verify?email=&token=   → POST /api/v1/auth/verify  { email, token }
-                          response: { access_token, expires_at, user }
-                          store access_token; redirect to /
-```
-
-After login, every request carries `Authorization: Bearer <token>`. Socket.io connects with `{ auth: { token } }`.
-
-If verification fails: *"this link has expired or doesn't match — request a new one."*
-
----
-
-## 10. Routing
-
-```
-/login
-/verify
-/                          ← default landing; opens Chat
-/chat
-/chat/[conversation_id]
-/vault
-/vault/[doc_id]
-/exam
-/exam/[workspace_id]
-/exam/[workspace_id]/artifact/[artifact_id]
-/together
-/signals
-```
-
-Settings is a drawer overlay over the current page (URL hash `#settings` or `?settings=open`).
-
-A persistent nav (rail, top bar, or drawer — your call) lets her switch widgets. Five tiles. The current widget glows softly in mode-color.
-
----
-
-## 11. Widgets
-
-### 11.1 Chat — the heart
-
-**Purpose.** Persistent dual-user conversation with AI as a third voice. The AI has memory across all conversations, retrieved at every turn.
-
-**Surfaces:**
-- Conversation list (sidebar or modal — your call). Each row: title, last-message preview, last-active timestamp.
-- Current conversation timeline (newest at bottom; auto-scroll on new message).
-- Composer with: multiline text, file attach (drag-drop or button), **mode toggle** (Ulzii / Obama), send button.
-- Streaming AI message: tokens appear as they're generated. Optional thinking trace renders in a smaller dimmer block above the answer.
-- Presence indicator: a tiny dot near Badrushk's avatar — green when he's online in this conversation.
-- Typing indicator: subtle "Badrushk is typing…" with a three-dot animation.
-- Pinned context: a collapsed accordion at the top of the timeline. *"Pinned: working on the ESUI launch"*. Click to expand and edit.
-- Auto-titled: titles are generated server-side after the 3rd turn; refetch the conversation to update.
-
-**Mode toggle.** A small inline pill in the composer. Two states: Ulzii (Sky Blue) and Obama (Forest Green). Selected mode applies to the next message and is captured per-message in history. The mode pill is a small intentional gesture — do not make it dominant.
-
-**Cancel.** A subtle stop button while streaming. Emits `message:cancel`.
-
-**Tool use rendering.** When the AI suggests saving an insight, a `vault_pin_suggestion` block appears inline in the streamed message. Render it as a small contained card with: title, content preview (markdown), tags. Two actions: "save to vault" (calls `POST /api/v1/vault/documents`) and "dismiss." Save with a subtle ✓ near the card; never use a toast.
-
-**Branching is deferred** — leave room in the architecture for it but no UI surface needed yet.
-
----
-
-### 11.2 Exam — learning compression
-
-**Purpose.** Compress study materials into intelligence-dense artifacts. Esui uploads notes/readings; the AI produces structured outputs.
-
-**Workspace flow:**
-- Workspaces list. Each: title, subject, last-active.
-- Inside a workspace: source file list (drag-drop area to add), artifact list, "generate" affordance with kind selector + mode toggle.
-
-**Five artifact kinds**, each with a dedicated viewer:
-
-1. **Cheatsheet.** Sectioned (Definitions / Theorems / Pitfalls / Worked Examples). Each item is a markdown blurb. Section accordions. Print-clean.
-
-2. **Concept Map.** Hierarchical graph. Nodes have `kind` (concept/definition/theorem/method) and `depth` (0 = foundational). Edges typed (`implies`, `specializes`, `requires`, `contrasts`, `supports`). Use react-flow with dagre layout.
-
-3. **Practice Set.** Question-by-question flow. Short-answer or MCQ. After all answered, submit → the backend AI-grades and returns score + per-question feedback + weak topics. Render the result as a small report card. Offer "practice on weak topics" CTA that creates a new practice set with `seed_from_attempt_id`.
-
-4. **Knowledge Graph (Voronoi).** This is the showpiece. Regions are colored areas; nodes are weighted (centrality 0–1 → size); edges typed (`prereq`, `supports`, `specializes`, `contrasts`). The backend may provide x/y hints in [0,1] but layout is your call — Voronoi tessellation around region centroids works beautifully here.
-
-5. **Simulation.** Timed test mode. Countdown in the corner. Mixed question types. On submit → AI grading.
-
-**Adaptive practice.** When generating a practice set, surface a "from your last weak topics" toggle that includes `seed_from_attempt_id`.
-
----
-
-### 11.3 Vault — knowledge home
-
-**Purpose.** Personal knowledge repository with semantic search and a knowledge-graph view of her own thinking.
-
-**Surfaces:**
-- **Search-first home.** A prominent search bar; results are: doc title + snippet (with the matching phrase highlighted) + score. Hits should feel instant — debounce 200ms.
-- **Document list.** Sortable by recent / title / content_type / shared. Each row: title, content_type pill, tag chips, updated_at, shared indicator.
-- **Markdown editor.** Live preview optional. Autosave on idle (1s) and blur. Status indicator: *"saved"* / *"saving…"* / *"indexing…"*.
-- **Tag chips.** Auto + user. Click a chip to filter. User can add/remove (`POST/DELETE /api/v1/vault/documents/:id/tags`).
-- **Knowledge graph view.** Force-directed, interactive zoom/pan. Click a node to navigate to that doc. Node color = content_type (note, journal, draft, research, reference). Node size = centrality (number of links). Edges = semantic links (cosine ≥ 0.78).
-- **Share toggle.** A switch on each doc. When `shared=true`, the partner can see it.
-- **Import file.** Drag-drop zone. Accepts PDF, DOCX, MD, TXT. Becomes a vault doc; chunks index in the background (status streams via socket if you wire it; otherwise refetch periodically).
-
-The graph view is one of the most beautiful parts of ESUI. Render it like a constellation — her thinking as a network. The first time she opens it after writing 10+ notes should make her smile.
-
----
-
-### 11.4 Together Photos — the most personal
-
-**Purpose.** Composited "as if" photos of Esui and Badrushk in the same scene. They're long-distance. This widget exists because they rarely get to take photos together.
-
-**Three surfaces:**
-
-1. **Gallery.** Timeline of composites. Each card: composite image, date stamp, scene caption (*"a quiet sunlit afternoon in the garden"*). Cross-fade as she scrolls. Tap to enlarge.
-
-2. **Prompt card.** The most delicate UI in the entire product. Slides in softly from a corner of any page (not just /together). It says something like:
-
-   > Badrushk wants to take a photo with you today.
-   > **[upload one of yours]** *or* *not now*
-
-   - Slides in with a 400ms spring.
-   - Never modal; never dims the page.
-   - Dismissible without judgment.
-   - On skip: replaced by a warm message (one of four, server-provided), shown for 2.5s, then fades.
-   - Never re-prompts within 6 hours.
-   - Never appears during Esui's exam sessions or while she's in mid-conversation.
-
-3. **Settings sub-page** for Badrushk: his uploaded photos as a grid; each has a "make eligible for compositing" toggle. Esui's view of this sub-page is hidden.
-
-**Composite delivery.** After Esui accepts a prompt and uploads her photo, the composite generates in the background (10–30s). Show progress softly: a small status pill on the gallery (*"composing…"*). When ready, the new photo appears at the top of the gallery with a brief shimmer.
-
-The composite gallery should feel like a private photo album, not a feed. Quiet captions. Subtle date stamps. No like buttons. No share buttons. This is just for them.
-
----
-
-### 11.5 Signals — daily rhythm
-
-**Purpose.** Curated wisdom feed every 6 hours. Six categories. Ephemeral by default (24h unless pinned).
-
-**Surfaces:**
-- Six categories laid out as either columns or a single feed with category labels (your call). Categories:
-  - **Global** · **Tech** · **Mathematics** · **Arabic Philosophy** · **Chinese Philosophy** · **Research**
-- Each signal is a small card: title, 2–4 sentence body, source attribution (small, italic), three actions (Open / Pin / Dismiss).
-- Cycle freshness indicator: *"refreshed at 12:00 UTC"* — small, dimmed.
-- When a new cycle arrives (Socket.io `cycle:refreshed`), it slides in **below** the current cycle, with a subtle divider. She controls when to scroll past the old.
-
-Cards should feel like postcards from the world. Short. Considered. Each category has a small color tab so she can tell at a glance which world this signal comes from.
-
-**Pin** → creates a vault document and adds a tiny ✓.
-**Dismiss** → fades out.
-**Open** → opens source URL in a new tab.
-
-Personalization happens server-side: the signal order within each category reflects her past pins/dismisses. Don't render any "personalized for you" label — let it just feel right.
-
----
-
-### 11.6 Settings — a drawer
-
-Slides in from the side. Sections, in order:
-
-1. **Profile** — display name, avatar (image upload via R2), timezone, default mode (Ulzii / Obama).
-2. **Memory.** A list with edit + forget. Each row: text, category pill, salience indicator, source ("from chat", "manual", etc.), `last_used_at`. **This is Esui's audit panel into the AI's mental model of her.** It earns trust. Make it feel intentional. Search within memories should work.
-3. **Usage.** Today's $ used / daily cap, plus a 30-day breakdown by task. Calm bar chart.
-4. **Together** *(Badrushk only).* Photo eligibility toggles for compositing.
-5. **Theme.** Light / Dark / System.
-
-Memory section is more important than it sounds. It's where Esui sees the AI thinking about her. Render each row with care.
-
----
-
-## 12. API surface (full)
-
-All REST endpoints prefixed `/api/v1/`. Carry `Authorization: Bearer <token>`.
-
-### Auth
-- `POST /auth/magic-link { email }` → 204
-- `POST /auth/verify { email, token }` → `{ access_token, expires_at, user }`
-- `GET /auth/me` → `{ user }`
-
-### Me
-- `GET /me` → `{ user }`
-- `PATCH /me { display_name?, avatar_url?, timezone?, default_mode? }` → `{ user }`
-- `GET /me/usage?range_days=30` → `{ today_usd, daily_cap_usd, by_task: [...] }`
-
-### Conversations
-- `GET /conversations?archived=false&limit=50` → list
-- `POST /conversations { title?, pinned_context?, invite_partner?: true }` → conversation
-- `GET /conversations/:id` → conversation
-- `PATCH /conversations/:id { title?, pinned_context?, archived? }` → conversation
-- `DELETE /conversations/:id` → 204
-- `GET /conversations/:id/messages?before=&limit=50` → list
-- `POST /conversations/:id/messages { content_blocks, mode, parent_message_id?, attached_file_ids?, model_hint? }` → 202 (AI streams over WS)
-- `POST /conversations/:id/search { query, limit?: 20 }` → list
-
-### Files
-- `POST /files` (multipart) → file
-- `GET /files/:id` → file metadata
-- `POST /files/:id/url` → `{ signed_url, expires_in }`
-- `DELETE /files/:id` → 204
-- `GET /files?kind=&limit=50` → list
-
-### Vault
-- `GET /vault/documents?archived=&shared_only=&limit=` → list
-- `POST /vault/documents { title, content_md, content_type?, shared? }` → doc
-- `GET /vault/documents/:id` → doc
-- `PATCH /vault/documents/:id { title?, content_md?, content_type?, shared?, archived? }` → doc
-- `DELETE /vault/documents/:id` → 204
-- `POST /vault/search { query, limit?, mode?: 'hybrid'|'semantic' }` → hits
-- `POST /vault/import-file { file_id, title?, content_type? }` → doc (ingest async)
-- `GET /vault/documents/:id/tags` → list
-- `POST /vault/documents/:id/tags { tag }` → 201
-- `DELETE /vault/documents/:id/tags/:tag` → 204
-- `GET /vault/graph?center=&depth=2&max_nodes=80` → `{ nodes, edges }`
-
-### Exam
-- `GET /exam/workspaces?limit=` → list
-- `POST /exam/workspaces { title, subject? }` → workspace
-- `GET /exam/workspaces/:id` → workspace
-- `DELETE /exam/workspaces/:id` → 204
-- `GET /exam/workspaces/:id/sources` → list
-- `POST /exam/workspaces/:id/sources { file_id }` → source (ingest async)
-- `GET /exam/workspaces/:id/artifacts` → list
-- `POST /exam/workspaces/:id/generate { kind, mode, title?, options? }` → 202 (artifact_id, status='generating')
-- `GET /exam/artifacts/:id` → artifact
-- `POST /exam/artifacts/:id/attempt { responses, duration_sec }` → attempt (with AI grade)
-
-`kind` is one of: `cheatsheet`, `practice_set`, `concept_map`, `knowledge_graph`, `simulation`.
-
-### Together
-- `GET /together/prompts/current` → prompt or null (Esui only returns non-null)
-- `POST /together/prompts/:id/skip` → `{ message }` (warm string)
-- `POST /together/prompts/:id/accept { esui_photo_file_id, scene_hint? }` → 202 (photo)
-- `GET /together/photos?limit=50` → list
-- `GET /together/photos/:id` → photo
-- `GET /together/eligible` → list of files (current user's images with eligibility flag)
-- `POST /together/eligible/:file_id { eligible: bool }` → 204
-
-### Signals
-- `GET /signals/current` → `{ cycle_id, refreshed_at, expires_at, items }`
-- `POST /signals/:id/open` → 204
-- `POST /signals/:id/pin` → `{ vault_document_id }`
-- `POST /signals/:id/dismiss` → 204
-- `POST /signals/:id/share-to-chat { conversation_id }` → `{ message_id }`
-
-### Memory
-- `GET /memory?category=&scope=&include_forgotten=false&limit=100` → list
-- `POST /memory { text, category?, scope? }` → memory
-- `PATCH /memory/:id { text?, category?, salience? }` → memory
-- `POST /memory/:id/forget` → 204
-- `POST /memory/search { query, limit?: 20 }` → list
-
----
-
-## 13. Socket.io events
-
-Connect to `NEXT_PUBLIC_WS_URL` with `{ auth: { token } }`.
-
-### Client → server
-- `conversation:join { conversation_id }` — joins room
-- `conversation:leave { conversation_id }`
-- `typing:start { conversation_id }` / `typing:stop { conversation_id }`
-- `message:send { conversation_id, content_blocks, mode, parent_message_id?, attached_file_ids?, model_hint? }`
-- `message:cancel { message_id }`
-
-### Server → client (chat)
-- `presence:update { conversation_id, user_id, online }`
-- `typing:update { conversation_id, user_id, typing }`
-- `message:created { ...message }` — any new message in the room
-- `message:ai:start { message_id, mode, model_id }`
-- `message:ai:delta { message_id, delta_text }` — repeatedly
-- `message:ai:thinking { message_id, delta_text }` — extended thinking traces (optional)
-- `message:ai:tool_use { message_id, tool, args }`
-- `message:ai:complete { message_id, tokens_in, tokens_out, cache_hit }`
-- `message:ai:error { message_id, error }`
-
-### Server → client (other)
-- `prompt:appear { prompt_id, shown_at }` — Together prompt; Esui only
-- `composite:progress { photo_id, step, percent }`
-- `composite:ready { photo_id }`
-- `composite:failed { photo_id, error }`
-- `artifact:complete { artifact_id }` / `artifact:error { artifact_id, error }`
-- `cycle:refreshed { cycle_id, refreshed_at, expires_at }` — new Signals cycle
-- `system:notice { kind, message, dismissable }` — calm notices (e.g., cost cap reached)
-
----
-
-## 14. Content blocks
-
-Messages carry an array of typed blocks. Render each:
-
-```ts
-type Block =
-  | { type: 'text'; text: string }
-  | { type: 'image'; file_id: string; alt?: string }
-  | { type: 'file'; file_id: string }
-  | { type: 'signal_card'; signal_id: string }
-  | { type: 'vault_link'; document_id: string }
-  | { type: 'vault_pin_suggestion'; title: string; content_md: string; tags: string[] }
-  | { type: 'citation'; source_id: string; source_kind: 'vault'|'file'|'memory'; quote?: string }
-  | { type: 'thinking'; text: string }
-```
-
-Streaming AI messages start as a single `text` block; additional blocks (`vault_pin_suggestion`, `thinking`) may arrive as separate events.
-
----
-
-## 15. Streaming protocol
-
-For chat AI messages:
-
-1. Client emits `message:send`.
-2. Server emits `message:created` (the user's message).
-3. Server emits `message:ai:start` with `{ message_id, mode, model_id }`.
-4. Server emits `message:ai:delta` repeatedly with `{ message_id, delta_text }`.
-5. Optional `message:ai:thinking` (Opus extended thinking).
-6. Optional `message:ai:tool_use` when AI suggests a save (render the suggestion block).
-7. Server emits `message:ai:complete`.
-
-Append deltas to the in-flight message bubble. Never show a spinner. The cursor blinks at the tail of the latest text.
-
-If the user clicks Stop: emit `message:cancel { message_id }`. The message persists with whatever streamed.
-
----
-
-## 16. Skeletons and empty states
-
-**Loading.** Skeleton bars (subtle pulse on a `bg-of-bg` color). Match the shape of what's coming.
-
-**Empty.** Warm copy + small monospace illustration if natural. Examples:
-- Chat empty: *"start a conversation — Ulzii or Obama"*
-- Vault empty: *"nothing in your vault yet — write the first thing on your mind"*
-- Together gallery empty: *"the first photo will land here when one of you accepts a moment"*
-- Signals empty: *"signals are quiet right now — check back in a few hours"*
-
-**Error.** Warm copy + retry button. Examples:
-- *"we couldn't quite get that — try again?"*
-- *"we couldn't reach the world to find new signals — we'll try again at the next cycle."*
-
-No blank white screens. No spinners. No "something went wrong."
-
----
-
-## 17. Quality bar
-
-- Page transitions <16ms jank, 60fps.
-- AI responses begin streaming within ~1s of send.
-- File upload uses signed PUT URLs for files >4MB.
-- A11y: every interactive element has a focus ring; semantic HTML; `aria-live` regions for streaming text; respects `prefers-reduced-motion` and `prefers-color-scheme`; keyboard nav across all five widgets.
-- All long lists virtualize beyond ~200 items.
-
-It should feel like Linear in speed, Vercel in elegance, Arc in warmth. If it doesn't feel that way, iterate.
-
----
-
-## 18. Reading order
-
-1. Skim everything above for shape.
-2. Build the auth flow + workspace shell + theme + nav.
-3. Build **Chat** first — it's the heart, and the streaming UX sets the standard for everything else.
-4. Then **Vault**, **Exam**, **Signals**, **Together** — in that order if any prioritization is needed.
-5. **Settings** drawer.
-
----
-
-## 19. Closing note
-
-You're designing the daily home of someone Badrushk loves. Every detail you put care into is a small letter to her.
-
-Reach.
+Build it like it matters. Because it does.

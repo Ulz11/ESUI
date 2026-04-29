@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import SessionLocal
 from app.core.log import log
-from app.integrations.anthropic import stream_chat
 from app.memory.engine import index_message
 from app.memory.extract import fire_and_forget_extract
 from app.models import (
@@ -33,10 +32,11 @@ from app.orchestrator.cost_cap import (
     estimate_cost_usd,
     is_capped,
 )
-from app.orchestrator.effort import classify_effort
-from app.orchestrator.modes import Mode, system_blocks
+from app.orchestrator.dispatcher import flat_system_from_blocks, stream_via
+from app.orchestrator.intent import classify
+from app.orchestrator.modes import Mode, default_temperature, system_blocks
 from app.orchestrator.retrieval import retrieve_for_chat
-from app.orchestrator.router import select_model
+from app.orchestrator.router import Alias, select
 from app.orchestrator.tools import CHAT_TOOLS, render_pin_suggestion
 
 EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]
@@ -80,37 +80,41 @@ async def run_chat_turn(
         await session.commit()
         await emit("message:created", _msg_dict(user_msg))
 
-    # 2) Retrieval (own session for query isolation)
-    async with SessionLocal() as session:
-        retrieved = await retrieve_for_chat(
-            session=session,
-            query=user_text,
-            user_id=user_id,
-            partner_id=partner_id,
-            conversation_id=conversation_id,
-            mode=mode,
-        )
-        history = await _recent_history(session, conversation_id)
-        pinned = (await session.get(Conversation, conversation_id)).pinned_context
+    # 2) Retrieval + classifier + cap check in parallel — these don't depend
+    # on each other and previously serialized ~150–650ms before the first
+    # AI token streamed.
+    async def _retrieve() -> tuple[str, list[Message], str | None]:
+        async with SessionLocal() as session:
+            retrieved_ = await retrieve_for_chat(
+                session=session,
+                query=user_text,
+                user_id=user_id,
+                partner_id=partner_id,
+                conversation_id=conversation_id,
+                mode=mode,
+            )
+            history_ = await _recent_history(session, conversation_id)
+            conv_ = await session.get(Conversation, conversation_id)
+            pinned_ = conv_.pinned_context if conv_ is not None else None
+        return retrieved_, history_, pinned_
 
-    # 3) Build prompt + stream
+    (retrieved, history, pinned), hints, capped = await asyncio.gather(
+        _retrieve(),
+        classify(user_text),
+        is_capped(user_id),
+    )
+
+    # 3) Build prompt
     sys_blocks = system_blocks(mode, pinned_context=pinned, retrieved_block=retrieved)
-
-    # Convert DB messages to Anthropic format
     anthropic_messages = _to_anthropic_messages(history) + [
         {"role": "user", "content": [{"type": "text", "text": user_text}]}
     ]
 
-    # Effort classification → Opus for high-effort questions, else Sonnet.
-    capped = await is_capped(user_id)
-    if model_hint:
-        model = select_model("chat", hint=model_hint)  # type: ignore[arg-type]
-    elif capped:
-        # Cap crossed today: stay on Sonnet to keep things smooth and cheap.
-        model = "sonnet"
-    else:
-        effort = await classify_effort(user_text)
-        model = "opus" if effort == "high" else "sonnet"
+    # Route the model
+    user_override: Alias | None = model_hint  # type: ignore[assignment]
+    spec = select(
+        "chat", mode=mode, hints=hints, user_override=user_override, capped=capped,
+    )
 
     if capped and await consume_notice(user_id):
         await emit("system:notice", {
@@ -120,6 +124,7 @@ async def run_chat_turn(
         })
 
     # 4) Persist streaming placeholder
+    model_id_for_db = _model_id_label(spec)
     async with SessionLocal() as session:
         ai_msg = Message(
             conversation_id=conversation_id,
@@ -127,7 +132,7 @@ async def run_chat_turn(
             sender_type="ai",
             sender_user_id=None,
             mode=mode,
-            model_id=f"claude-{model}",
+            model_id=model_id_for_db,
             content_blocks=[{"type": "text", "text": ""}],
             status="streaming",
         )
@@ -136,24 +141,31 @@ async def run_chat_turn(
         ai_msg_id = ai_msg.id
 
     await emit("message:ai:start", {
-        "message_id": str(ai_msg_id), "mode": mode, "model_id": f"claude-{model}",
+        "message_id": str(ai_msg_id),
+        "mode": mode,
+        "model_id": model_id_for_db,
+        "intent": hints.intent,
+        "provider": spec.provider,
     })
 
-    # 5) Stream
+    # 5) Stream — dispatch by provider. Tools only honored on Anthropic.
     started = time.perf_counter()
     accumulated: list[str] = []
     tokens_in = tokens_out = tokens_cached = 0
 
     extra_blocks: list[dict[str, Any]] = []
+    cite_urls: list[str] = []
     try:
-        async for chunk in stream_chat(
-            model=model,
+        plain_system = flat_system_from_blocks(sys_blocks)
+        async for chunk in stream_via(
+            spec,
             system_blocks=sys_blocks,
+            plain_system=plain_system,
             messages=anthropic_messages,
-            tools=CHAT_TOOLS,
-            max_tokens=4096 if model == "opus" else 2048,
-            temperature=0.7,
-            extended_thinking=(model == "opus"),
+            tools=CHAT_TOOLS if spec.is_anthropic else None,
+            max_tokens=4096 if spec.alias == "opus" else 2048,
+            temperature=default_temperature(mode),
+            extended_thinking=(spec.alias == "opus"),
         ):
             if chunk.kind == "text" and chunk.text:
                 accumulated.append(chunk.text)
@@ -169,6 +181,15 @@ async def run_chat_turn(
                 if chunk.tool_name == "pin_to_vault":
                     block = render_pin_suggestion(args)
                     extra_blocks.append(block)
+                elif chunk.tool_name == "cite":
+                    url_ = (args.get("url") or "").strip()
+                    if url_ and url_ not in cite_urls:
+                        cite_urls.append(url_)
+                        extra_blocks.append({
+                            "type": "citation",
+                            "source_kind": "web",
+                            "source_id": url_,
+                        })
                 await emit("message:ai:tool_use", {
                     "message_id": str(ai_msg_id),
                     "tool": chunk.tool_name, "args": args,
@@ -193,10 +214,10 @@ async def run_chat_turn(
     final_text = "".join(accumulated)
     latency_ms = int((time.perf_counter() - started) * 1000)
 
-    # 6) Persist final (text block + any tool-use suggestion blocks)
+    # 6) Persist final (text block + any tool-use suggestion blocks + citations)
     final_blocks: list[dict[str, Any]] = [{"type": "text", "text": final_text}]
     final_blocks.extend(extra_blocks)
-    cost_usd = estimate_cost_usd(model, tokens_in, tokens_out)
+    cost_usd = estimate_cost_usd(spec.alias, tokens_in, tokens_out)
 
     async with SessionLocal() as session:
         db_msg = await session.get(Message, ai_msg_id)
@@ -214,8 +235,8 @@ async def run_chat_turn(
             message_id=ai_msg_id,
             task="chat",
             mode=mode,
-            provider="anthropic",
-            model_id=f"claude-{model}",
+            provider=spec.provider,
+            model_id=model_id_for_db,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             tokens_cached=tokens_cached,
@@ -325,6 +346,22 @@ def _msg_dict(m: Message) -> dict[str, Any]:
         "status": m.status,
         "created_at": m.created_at.isoformat() if m.created_at else None,
     }
+
+
+def _model_id_label(spec) -> str:
+    """Display label for messages.model_id and ai_calls.model_id."""
+    from app.core.config import settings
+    if spec.provider == "anthropic":
+        return {
+            "opus": settings.opus_model_id,
+            "sonnet": settings.sonnet_model_id,
+            "haiku": settings.haiku_model_id,
+        }[spec.alias]
+    if spec.provider == "google":
+        return settings.gemini_model_id
+    if spec.alias == "perplexity-research":
+        return settings.perplexity_research_model_id
+    return settings.perplexity_reasoning_model_id
 
 
 async def _embed_messages(

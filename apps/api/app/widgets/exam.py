@@ -37,7 +37,7 @@ from app.orchestrator.exam_gen import (
     generate_simulation,
     grade_attempt,
 )
-from app.orchestrator.router import select_model
+from app.orchestrator.router import select as select_route
 
 router = APIRouter(prefix="/exam", tags=["exam"])
 
@@ -397,11 +397,13 @@ async def _run_generation(
                 await _fail_artifact(session, artifact_id, "no source content")
                 return
 
-            model = select_model(_KIND_TASK[body.kind])  # type: ignore[arg-type]
+            spec = select_route(_KIND_TASK[body.kind])  # type: ignore[arg-type]
+            model = spec.alias  # all exam kinds resolve to anthropic aliases
 
             if body.kind == "cheatsheet":
                 payload = await generate_cheatsheet(
-                    model=model, source_text=source_text, title=ws.title
+                    model=model, source_text=source_text, title=ws.title,
+                    mode=body.mode,
                 )
             elif body.kind == "practice_set":
                 weak = await _seed_weak_topics(session, body, user_id)
@@ -436,17 +438,24 @@ async def _run_generation(
             tokens_in = payload.pop("tokens_in", None)
             tokens_out = payload.pop("tokens_out", None)
 
+            from app.core.config import settings as _s
+            real_model_id = {
+                "opus": _s.opus_model_id,
+                "sonnet": _s.sonnet_model_id,
+                "haiku": _s.haiku_model_id,
+            }.get(model, str(model))
+
             a = await session.get(ExamArtifact, artifact_id)
             if a:
                 a.payload = payload
                 a.status = "ready"
-                a.generated_by_model = f"claude-{model}"
+                a.generated_by_model = real_model_id
             session.add(AICall(
                 user_id=user_id,
                 task=f"exam.{body.kind}",
                 mode=body.mode,
                 provider="anthropic",
-                model_id=f"claude-{model}",
+                model_id=real_model_id,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
             ))

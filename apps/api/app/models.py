@@ -197,7 +197,7 @@ class File(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('pdf','image','doc','audio','other')", name="files_kind_check"
+            "kind IN ('pdf','image','doc','audio','video','other')", name="files_kind_check"
         ),
         CheckConstraint(
             "ingest_status IN ('pending','processing','ready','failed','skipped')",
@@ -410,63 +410,25 @@ class ExamAttempt(Base):
     created_at: Mapped[created_ts]
 
 
-# ---------- Together Photos ----------
-
-
-class TogetherPrompt(Base):
-    __tablename__ = "together_prompts"
-
-    id: Mapped[uuid_pk]
-    shown_at: Mapped[created_ts]
-    shown_to_user: Mapped[uuid_fk] = mapped_column(
-        ForeignKey("users.id"), nullable=False, index=True
-    )
-    outcome: Mapped[str] = mapped_column(String, nullable=False, default="pending")
-    outcome_at: Mapped[nullable_ts]
-    message_variant: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    __table_args__ = (
-        CheckConstraint(
-            "outcome IN ('pending','skipped','accepted','expired')",
-            name="together_prompts_outcome_check",
-        ),
-    )
-
-
-class TogetherPhoto(Base):
-    __tablename__ = "together_photos"
-
-    id: Mapped[uuid_pk]
-    prompt_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("together_prompts.id"), nullable=True
-    )
-    esui_photo_file_id: Mapped[uuid_fk] = mapped_column(
-        ForeignKey("files.id"), nullable=False
-    )
-    badrushk_photo_file_id: Mapped[uuid_fk] = mapped_column(
-        ForeignKey("files.id"), nullable=False
-    )
-    composite_file_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("files.id"), nullable=True
-    )
-    scene_prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String, nullable=False, default="queued")
-    error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[created_ts]
-    ready_at: Mapped[nullable_ts]
-
-    __table_args__ = (
-        CheckConstraint(
-            "status IN ('queued','removing_bg','composing','ready','failed')",
-            name="together_photos_status_check",
-        ),
-    )
+# ---------- Together (gallery) ----------
+# Note: legacy TogetherPrompt / TogetherPhoto tables still exist in the DB
+# (their migrations were never reversed) but the application no longer maps
+# them. The current gallery uses TogetherMedia, defined alongside Signal below.
 
 
 # ---------- Signals ----------
 
 
 class Signal(Base):
+    """User-entered quote in Esui's reading feed.
+
+    Categories (locked):
+      - mathematics         (Mathematics for Human Flourishing — Francis Su)
+      - arabic_philosophy   (Arabic / Arabian philosophy)
+      - chinese_philosophy  (Chinese philosophy)
+      - elements_of_ai      (Elements of AI course)
+    """
+
     __tablename__ = "signals"
 
     id: Mapped[uuid_pk]
@@ -476,21 +438,55 @@ class Signal(Base):
     source_url: Mapped[str | None] = mapped_column(String, nullable=True)
     source_name: Mapped[str | None] = mapped_column(String, nullable=True)
     fetched_at: Mapped[created_ts]
-    expires_at: Mapped[datetime] = mapped_column(nullable=False, index=True)
-    cycle_id: Mapped[UUID] = mapped_column(
-        nullable=False, index=True
-    )
+    expires_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    cycle_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
     embedding: Mapped[list[float] | None] = mapped_column(
         Vector(1024), nullable=True
     )
+    topic: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
 
     __table_args__ = (
         CheckConstraint(
-            "category IN ('global','tech','mathematics','arabic_philosophy',"
-            "'chinese_philosophy','research')",
+            "category IN ('mathematics','arabic_philosophy',"
+            "'chinese_philosophy','elements_of_ai')",
             name="signals_category_check",
         ),
     )
+
+
+class TogetherMedia(Base):
+    """Items in the Together gallery — images and videos Esui drops in."""
+
+    __tablename__ = "together_media"
+
+    id: Mapped[uuid_pk]
+    file_id: Mapped[uuid_fk] = mapped_column(
+        ForeignKey("files.id", ondelete="CASCADE"), nullable=False
+    )
+    caption: Mapped[str | None] = mapped_column(Text, nullable=True)
+    taken_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    added_by: Mapped[uuid_fk] = mapped_column(
+        ForeignKey("users.id"), nullable=False
+    )
+    created_at: Mapped[created_ts]
+
+
+class SignalDrop(Base):
+    __tablename__ = "signal_drops"
+
+    id: Mapped[uuid_pk]
+    signal_id: Mapped[uuid_fk] = mapped_column(
+        ForeignKey("signals.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid_fk] = mapped_column(
+        ForeignKey("users.id"), nullable=False
+    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
+    topic: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[created_ts]
+
+    __table_args__ = (UniqueConstraint("signal_id", "user_id"),)
 
 
 class SignalEngagement(Base):

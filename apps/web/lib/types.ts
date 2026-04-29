@@ -43,7 +43,7 @@ export type ContentBlock =
   | {
       type: "citation";
       source_id: string;
-      source_kind: "vault" | "file" | "memory";
+      source_kind: "vault" | "file" | "memory" | "web";
       quote?: string;
     }
   | { type: "thinking"; text: string };
@@ -119,38 +119,50 @@ export type ExamArtifact = {
   created_at: string;
 };
 
-export type Signal = {
+// Signals — Esui's curated quote feed. Four categories, locked.
+export type SignalCategory =
+  | "mathematics"
+  | "arabic_philosophy"
+  | "chinese_philosophy"
+  | "elements_of_ai";
+
+export type Quote = {
   id: string;
-  category: string;
+  category: SignalCategory;
   title: string;
   body: string;
   source_url: string | null;
   source_name: string | null;
-  fetched_at: string;
-  expires_at: string;
-};
-
-export type SignalsCycle = {
-  cycle_id: string | null;
-  refreshed_at: string | null;
-  expires_at: string | null;
-  items: Signal[];
-};
-
-export type TogetherPrompt = {
-  id: string;
-  shown_at: string;
-  outcome: string;
-};
-
-export type TogetherPhoto = {
-  id: string;
-  status: "queued" | "composing" | "ready" | "error";
-  scene_prompt: string;
-  composite_file_id: string | null;
   created_at: string;
-  ready_at: string | null;
-  error: string | null;
+};
+
+export type QuoteCreate = {
+  category: SignalCategory;
+  body: string;
+  title?: string;
+  source_url?: string;
+  source_name?: string;
+};
+
+// Together — clean drag-drop gallery (images + videos).
+export type TogetherMediaKind = "image" | "video";
+
+export type TogetherMedia = {
+  id: string;
+  file_id: string;
+  kind: TogetherMediaKind;
+  mime: string;
+  filename: string;
+  width?: number | null;
+  height?: number | null;
+  duration_sec?: number | null;
+  caption: string | null;
+  taken_at: string | null;
+  added_by: string;
+  created_at: string;
+  // Pre-signed by the backend at list/upload time. Refresh on 403/timeout.
+  url?: string | null;
+  url_expires_in?: number | null;
 };
 
 export type Memory = {

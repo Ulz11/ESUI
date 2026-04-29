@@ -30,11 +30,18 @@ _KIND_BY_MIME = {
     "image/jpeg": "image",
     "image/webp": "image",
     "image/gif": "image",
+    "image/heic": "image",
+    "image/heif": "image",
     "audio/mpeg": "audio",
     "audio/wav": "audio",
     "audio/x-wav": "audio",
     "audio/mp4": "audio",
     "audio/m4a": "audio",
+    "video/mp4": "video",
+    "video/quicktime": "video",
+    "video/webm": "video",
+    "video/x-matroska": "video",
+    "video/x-msvideo": "video",
 }
 
 _DOC_MIMES = {
@@ -93,6 +100,10 @@ async def upload_file(
     body = await file.read()
     if not body:
         raise HTTPException(400, "empty file")
+    # Cap general uploads at 100 MB; documents are typically much smaller.
+    # Together gallery has its own (larger) cap for video.
+    if len(body) > 100 * 1024 * 1024:
+        raise HTTPException(400, "file is too big — max 100 MB")
     sha = hashlib.sha256(body).digest()
     mime = file.content_type or "application/octet-stream"
 

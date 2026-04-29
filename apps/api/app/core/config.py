@@ -40,13 +40,21 @@ class Settings(BaseSettings):
 
     # anthropic
     anthropic_api_key: str = ""
+    opus_model_id: str = "claude-opus-4-7"
+    sonnet_model_id: str = "claude-sonnet-4-6"
+    haiku_model_id: str = "claude-haiku-4-5"
+
+    # google gemini
+    google_api_key: str = ""
+    gemini_model_id: str = "gemini-3.1-pro"
+
+    # perplexity (sonar)
+    perplexity_api_key: str = ""
+    perplexity_research_model_id: str = "sonar-deep-research"
+    perplexity_reasoning_model_id: str = "sonar-reasoning-pro"
 
     # voyage embeddings
     voyage_api_key: str = ""
-
-    # image apis
-    remove_bg_api_key: str = ""
-    stability_api_key: str = ""
 
     # unstructured
     unstructured_api_key: str = ""
