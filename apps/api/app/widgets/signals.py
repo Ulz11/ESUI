@@ -1,14 +1,14 @@
-"""Signals — Esui's curated quote feed.
+"""Daily Signals — hourly AI-curated quote feed.
 
-She drops in quotes from her reading. Four categories, locked:
+The cron job in `app/jobs/signals_curate.py` adds one quote per category
+per hour. Esui can also add her own quotes manually via POST. Quotes
+persist (no expiration). She can pin to vault, delete, or refine.
 
-  - mathematics            Mathematics for Human Flourishing — Francis Su
-  - arabic_philosophy      Arabic / Arabian philosophy
-  - chinese_philosophy     Chinese philosophy
-  - elements_of_ai         Elements of AI course (elementsofai.com)
-
-Each quote persists. She can delete any quote. She can pin a quote into the
-Vault if she wants it surfaced in chat retrieval.
+Four locked sources:
+  - chinese_philosophy   classical Chinese thought
+  - arabic_philosophy    classical Islamic / Arabic thought
+  - francis_su           Mathematics for Human Flourishing — Francis Su
+  - inspiration          real wisdom (not cringe)
 """
 
 from __future__ import annotations
@@ -30,10 +30,10 @@ router = APIRouter(prefix="/signals", tags=["signals"])
 
 
 VALID_CATEGORIES = {
-    "mathematics",
-    "arabic_philosophy",
     "chinese_philosophy",
-    "elements_of_ai",
+    "arabic_philosophy",
+    "francis_su",
+    "inspiration",
 }
 
 
@@ -90,10 +90,10 @@ def _derive_title(body: str, max_len: int = 80) -> str:
 
 def _default_source_for(category: str) -> str | None:
     return {
-        "mathematics": "Francis Su · Mathematics for Human Flourishing",
-        "arabic_philosophy": "Arabic philosophy",
         "chinese_philosophy": "Chinese philosophy",
-        "elements_of_ai": "Elements of AI · elementsofai.com",
+        "arabic_philosophy": "Arabic / Arabian philosophy",
+        "francis_su": "Francis Su · Mathematics for Human Flourishing",
+        "inspiration": "inspiration text",
     }.get(category)
 
 

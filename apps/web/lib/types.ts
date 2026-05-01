@@ -119,12 +119,12 @@ export type ExamArtifact = {
   created_at: string;
 };
 
-// Signals — Esui's curated quote feed. Four categories, locked.
+// Daily Signals — hourly AI-curated quote feed. Four categories, locked.
 export type SignalCategory =
-  | "mathematics"
-  | "arabic_philosophy"
   | "chinese_philosophy"
-  | "elements_of_ai";
+  | "arabic_philosophy"
+  | "francis_su"
+  | "inspiration";
 
 export type Quote = {
   id: string;
