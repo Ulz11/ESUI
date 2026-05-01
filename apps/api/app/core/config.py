@@ -4,8 +4,9 @@ Pydantic-settings reads from `.env` first, then process env. Production
 secrets are injected via Fly.io secrets / Vercel env.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -66,6 +67,17 @@ class Settings(BaseSettings):
 
     # cost guard
     daily_cost_cap_usd: float = 20.0
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, v: Any) -> Any:
+        """Accept env input as JSON array OR comma-separated string."""
+        if isinstance(v, str):
+            s = v.strip()
+            if s.startswith("["):
+                return v  # let pydantic parse JSON
+            return [item.strip() for item in s.split(",") if item.strip()]
+        return v
 
     @property
     def allowlisted_emails(self) -> set[str]:

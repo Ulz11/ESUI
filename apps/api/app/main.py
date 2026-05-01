@@ -69,6 +69,7 @@ from app.widgets.files import router as files_router  # noqa: E402
 from app.widgets.me import router as me_router  # noqa: E402
 from app.widgets.memory import router as memory_router  # noqa: E402
 from app.widgets.signals import router as signals_router  # noqa: E402
+from app.widgets.tasks import router as tasks_router  # noqa: E402
 from app.widgets.together import router as together_router  # noqa: E402
 from app.widgets.vault import router as vault_router  # noqa: E402
 
@@ -81,6 +82,7 @@ app.include_router(together_router, prefix="/api/v1")
 app.include_router(signals_router, prefix="/api/v1")
 app.include_router(memory_router, prefix="/api/v1")
 app.include_router(me_router, prefix="/api/v1")
+app.include_router(tasks_router, prefix="/api/v1")
 
 
 # ---------- Realtime handlers ----------

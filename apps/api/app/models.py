@@ -472,6 +472,47 @@ class TogetherMedia(Base):
     created_at: Mapped[created_ts]
 
 
+class Task(Base):
+    """Calendar / task surface inside Vault.
+
+    `kind = 'task'` for todos (status pending/in_progress/done); optional
+    `starts_at` is a due date.
+    `kind = 'event'` for scheduled blocks (`starts_at`, `ends_at`, `all_day`).
+    """
+
+    __tablename__ = "tasks"
+
+    id: Mapped[uuid_pk]
+    owner_id: Mapped[uuid_fk] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String, nullable=False, default="task")
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    starts_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    all_day: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    color: Mapped[str | None] = mapped_column(String, nullable=True)
+    shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    recurrence_rule: Mapped[str | None] = mapped_column(String, nullable=True)
+    location: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[created_ts]
+    updated_at: Mapped[datetime] = mapped_column(
+        nullable=False, server_default="now()"
+    )
+    completed_at: Mapped[nullable_ts]
+    archived_at: Mapped[nullable_ts]
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('task','event')", name="tasks_kind_check"),
+        CheckConstraint(
+            "status IN ('pending','in_progress','done','cancelled')",
+            name="tasks_status_check",
+        ),
+    )
+
+
 class SignalDrop(Base):
     __tablename__ = "signal_drops"
 
