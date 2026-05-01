@@ -41,6 +41,13 @@ export type ContentBlock =
       tags: string[];
     }
   | {
+      type: "vault_artifact_suggestion";
+      title: string;
+      content_md: string;
+      kind: ArtifactKind;
+      tags: string[];
+    }
+  | {
       type: "citation";
       source_id: string;
       source_kind: "vault" | "file" | "memory" | "web";
@@ -62,16 +69,44 @@ export type Message = {
   created_at: string;
 };
 
+export type VaultContentType =
+  | "note"
+  | "journal"
+  | "draft"
+  | "research"
+  | "reference"
+  | "idea"
+  | "chat_history"
+  | "project_artifact";
+
+export type ArtifactKind =
+  | "market_research"
+  | "three_scenario_sim"
+  | "tech_stack"
+  | "decision_memo"
+  | "knowledge_map"
+  | "mind_map"
+  | "tok_exploration"
+  | "other";
+
 export type VaultDocument = {
   id: string;
   owner_id: string;
   title: string;
   content_md: string;
-  content_type: string;
+  content_type: VaultContentType;
+  kind: ArtifactKind | null;
   shared: boolean;
   source_file_id: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type VaultArtifactSave = {
+  title: string;
+  content_md: string;
+  kind: ArtifactKind;
+  tags?: string[];
 };
 
 export type VaultSearchHit = {
@@ -144,13 +179,15 @@ export type QuoteCreate = {
   source_name?: string;
 };
 
-// Together — clean drag-drop gallery (images + videos).
-export type TogetherMediaKind = "image" | "video";
+// Beauty — clean drag-drop gallery (images + videos).
+export type BeautyMediaKind = "image" | "video";
+/** @deprecated Use BeautyMediaKind. */
+export type TogetherMediaKind = BeautyMediaKind;
 
-export type TogetherMedia = {
+export type BeautyMedia = {
   id: string;
   file_id: string;
-  kind: TogetherMediaKind;
+  kind: BeautyMediaKind;
   mime: string;
   filename: string;
   width?: number | null;
@@ -164,6 +201,9 @@ export type TogetherMedia = {
   url?: string | null;
   url_expires_in?: number | null;
 };
+
+/** @deprecated Use BeautyMedia. */
+export type TogetherMedia = BeautyMedia;
 
 export type Memory = {
   id: string;

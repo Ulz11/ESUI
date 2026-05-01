@@ -21,7 +21,7 @@ export function TogetherWidget() {
   const load = async () => {
     setLoading(true);
     try {
-      const rows = await api.get<TogetherMedia[]>("/api/v1/together/media?limit=200");
+      const rows = await api.get<TogetherMedia[]>("/api/v1/beauty/media?limit=200");
       setItems(rows);
     } catch {
       // soft failure
@@ -40,7 +40,7 @@ export function TogetherWidget() {
     const token = getAuthToken();
     setUploading((n) => n + 1);
     try {
-      const res = await fetch(`${API_URL}/api/v1/together/media`, {
+      const res = await fetch(`${API_URL}/api/v1/beauty/media`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: fd,
@@ -69,7 +69,7 @@ export function TogetherWidget() {
   const onDelete = async (id: string) => {
     setItems((p) => p.filter((m) => m.id !== id));
     setExpanded(null);
-    api.delete(`/api/v1/together/media/${id}`).catch(() => load());
+    api.delete(`/api/v1/beauty/media/${id}`).catch(() => load());
   };
 
   return (
@@ -175,7 +175,7 @@ function MediaCard({
     }
     let cancelled = false;
     api
-      .post<{ url: string }>(`/api/v1/together/media/${media.id}/url`)
+      .post<{ url: string }>(`/api/v1/beauty/media/${media.id}/url`)
       .then((r) => {
         if (!cancelled) setUrl(r.url);
       })
@@ -232,7 +232,7 @@ function Lightbox({
     if (media.url) return;
     let cancelled = false;
     api
-      .post<{ url: string }>(`/api/v1/together/media/${media.id}/url`)
+      .post<{ url: string }>(`/api/v1/beauty/media/${media.id}/url`)
       .then((r) => {
         if (!cancelled) setUrl(r.url);
       })

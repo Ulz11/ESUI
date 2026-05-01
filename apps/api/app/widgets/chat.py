@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import current_user, require_esui
 from app.core.db import get_session
 from app.core.errors import not_found
-from app.models import Conversation, ConversationParticipant, Message, User
+from app.models import Conversation, ConversationParticipant, Message, User, VaultDocument
 from app.orchestrator.streaming import run_chat_turn
 
 router = APIRouter(prefix="/conversations", tags=["chat"])
@@ -204,6 +204,61 @@ async def delete_conversation(
     conv = await _ensure_participant(session, conv_id, user.id)
     await session.delete(conv)
     await session.commit()
+
+
+@router.post("/{conv_id}/archive-to-vault", response_model=dict[str, str])
+async def archive_conversation_to_vault(
+    conv_id: UUID,
+    user: User = Depends(require_esui),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    """Snapshot a conversation as a Vault doc with content_type='chat_history'.
+
+    Used when Esui wants the transcript to live in her permanent knowledge —
+    surfaceable in retrieval, taggable, semantically searchable.
+    """
+    conv = await _ensure_participant(session, conv_id, user.id)
+    rows = await session.execute(
+        select(Message)
+        .where(Message.conversation_id == conv_id, Message.status == "complete")
+        .order_by(Message.created_at.asc())
+    )
+    msgs = list(rows.scalars().all())
+    if not msgs:
+        from fastapi import HTTPException, status as _status
+        raise HTTPException(_status.HTTP_400_BAD_REQUEST, "conversation is empty")
+
+    # Render transcript as markdown
+    parts: list[str] = []
+    title_for_doc = conv.title or f"Conversation · {conv.created_at.date().isoformat()}"
+    parts.append(f"# {title_for_doc}\n")
+    if conv.pinned_context:
+        parts.append(f"_Pinned: {conv.pinned_context}_\n")
+    for m in msgs:
+        if m.sender_type == "user":
+            who = "Esui"
+        elif m.sender_type == "ai":
+            who = (m.mode or "ai").capitalize()
+        else:
+            who = "system"
+        text = ""
+        for b in m.content_blocks or []:
+            if isinstance(b, dict) and b.get("type") == "text":
+                text += b.get("text", "")
+        if not text.strip():
+            continue
+        ts = m.created_at.isoformat() if m.created_at else ""
+        parts.append(f"\n**{who}** · _{ts}_\n\n{text.strip()}\n")
+
+    doc = VaultDocument(
+        owner_id=user.id,
+        title=title_for_doc[:200],
+        content_md="\n".join(parts),
+        content_type="chat_history",
+    )
+    session.add(doc)
+    await session.commit()
+    return {"vault_document_id": str(doc.id)}
 
 
 # ---------- messages ----------

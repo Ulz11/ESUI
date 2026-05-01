@@ -1,9 +1,8 @@
-"""Together — a clean, formal gallery.
+"""Beauty — a clean, formal gallery.
 
-Esui (or Badrushk) drops images and videos here. Each item is a `together_media`
-row pointing at a `files` row. Optional caption + taken_at.
-
-The composite/prompt machinery has been removed. This is a plain CRUD surface.
+Esui drops images and videos here. Badrushk has read-only access.
+Each item is a `beauty_media` row pointing at a `files` row. Optional
+caption + taken_at.
 """
 
 from __future__ import annotations
@@ -24,9 +23,9 @@ from app.core.auth import current_user, require_esui
 from app.core.db import get_session
 from app.core.errors import bad_request, not_found
 from app.integrations import r2
-from app.models import File, TogetherMedia, User
+from app.models import File, BeautyMedia, User
 
-router = APIRouter(prefix="/together", tags=["together"])
+router = APIRouter(prefix="/beauty", tags=["beauty"])
 
 
 # ---------- mime → kind ----------
@@ -74,7 +73,7 @@ class MediaOut(BaseModel):
     url_expires_in: int | None = None
 
 
-def _media_out(m: TogetherMedia, f: File, *, url: str | None = None) -> MediaOut:
+def _media_out(m: BeautyMedia, f: File, *, url: str | None = None) -> MediaOut:
     return MediaOut(
         id=str(m.id),
         file_id=str(f.id),
@@ -106,9 +105,9 @@ async def list_media(
     so the frontend renders the whole grid without per-card round-trips.
     """
     rows = await session.execute(
-        select(TogetherMedia, File)
-        .join(File, File.id == TogetherMedia.file_id)
-        .order_by(desc(TogetherMedia.created_at))
+        select(BeautyMedia, File)
+        .join(File, File.id == BeautyMedia.file_id)
+        .order_by(desc(BeautyMedia.created_at))
         .limit(min(limit, 500))
     )
     pairs = list(rows.all())
@@ -169,7 +168,7 @@ async def upload_media(
         session.add(f)
         await session.flush()
 
-    media = TogetherMedia(
+    media = BeautyMedia(
         file_id=f.id,
         caption=caption,
         taken_at=taken_at,
@@ -188,7 +187,7 @@ async def update_media(
     user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> MediaOut:
-    m = await session.get(TogetherMedia, media_id)
+    m = await session.get(BeautyMedia, media_id)
     if m is None:
         raise not_found("media")
     if "caption" in body:
@@ -209,7 +208,7 @@ async def delete_media(
     user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    m = await session.get(TogetherMedia, media_id)
+    m = await session.get(BeautyMedia, media_id)
     if m is None:
         raise not_found("media")
     file_id = m.file_id
@@ -220,7 +219,7 @@ async def delete_media(
     f = await session.get(File, file_id)
     if f is not None:
         ref = await session.execute(
-            select(TogetherMedia).where(TogetherMedia.file_id == file_id).limit(1)
+            select(BeautyMedia).where(BeautyMedia.file_id == file_id).limit(1)
         )
         if ref.scalar_one_or_none() is None:
             r2_key = f.r2_key
@@ -236,7 +235,7 @@ async def media_signed_url(
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, str | int]:
     """Issue a signed GET URL (10 min) for streaming the original."""
-    m = await session.get(TogetherMedia, media_id)
+    m = await session.get(BeautyMedia, media_id)
     if m is None:
         raise not_found("media")
     f = await session.get(File, m.file_id)

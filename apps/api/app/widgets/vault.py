@@ -36,6 +36,7 @@ class DocumentOut(BaseModel):
     title: str
     content_md: str
     content_type: str
+    kind: str | None = None
     shared: bool
     source_file_id: str | None
     created_at: datetime
@@ -46,6 +47,7 @@ class DocumentCreate(BaseModel):
     title: str
     content_md: str = ""
     content_type: str = "note"
+    kind: str | None = None
     shared: bool = False
 
 
@@ -53,8 +55,18 @@ class DocumentPatch(BaseModel):
     title: str | None = None
     content_md: str | None = None
     content_type: str | None = None
+    kind: str | None = None
     shared: bool | None = None
     archived: bool | None = None
+
+
+class ArtifactSave(BaseModel):
+    """Body for POST /vault/artifacts — usually originates from a chat
+    `save_artifact` tool-use card."""
+    title: str
+    content_md: str
+    kind: str  # market_research | three_scenario_sim | tech_stack | knowledge_map | mind_map | tok_exploration | decision_memo | other
+    tags: list[str] = []
 
 
 class SearchRequest(BaseModel):
@@ -83,6 +95,7 @@ def _doc_out(d: VaultDocument) -> DocumentOut:
         title=d.title,
         content_md=d.content_md,
         content_type=d.content_type,
+        kind=getattr(d, "kind", None),
         shared=d.shared,
         source_file_id=str(d.source_file_id) if d.source_file_id else None,
         created_at=d.created_at,
@@ -116,12 +129,28 @@ async def list_documents(
     session: AsyncSession = Depends(get_session),
     archived: bool = False,
     shared_only: bool = False,
+    content_type: str | None = None,
+    kind: str | None = None,
     limit: int = 50,
 ) -> list[DocumentOut]:
+    """List Vault documents.
+
+    Filters drive the four Vault tabs:
+      - content_type=note,idea     → "Notes" + "Ideas" tabs
+      - content_type=chat_history  → "Chat history" tab
+      - content_type=project_artifact → "Project artifacts" tab
+        (optionally narrowed by kind: market_research, knowledge_map, ...)
+    """
     partner = await _partner_id(session, user)
     q = select(VaultDocument).where(_visible_filter(user.id, partner))
     if shared_only:
         q = q.where(VaultDocument.shared.is_(True))
+    if content_type:
+        types = [t.strip() for t in content_type.split(",") if t.strip()]
+        if types:
+            q = q.where(VaultDocument.content_type.in_(types))
+    if kind:
+        q = q.where(VaultDocument.kind == kind)
     q = q.where(
         VaultDocument.archived_at.is_(None) if not archived
         else VaultDocument.archived_at.is_not(None)
@@ -129,6 +158,44 @@ async def list_documents(
     q = q.order_by(desc(VaultDocument.updated_at)).limit(min(limit, 200))
     rows = await session.execute(q)
     return [_doc_out(d) for d in rows.scalars().all()]
+
+
+@router.post("/artifacts", response_model=DocumentOut, status_code=201)
+async def save_artifact(
+    body: ArtifactSave,
+    user: User = Depends(require_esui),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentOut:
+    """Persist a chat-produced artifact as a project_artifact Vault doc.
+
+    Called by the frontend after Esui clicks 'save' on a
+    `vault_artifact_suggestion` block from a chat tool-use.
+    """
+    d = VaultDocument(
+        owner_id=user.id,
+        title=body.title.strip()[:200],
+        content_md=body.content_md,
+        content_type="project_artifact",
+        kind=body.kind,
+    )
+    session.add(d)
+    await session.flush()
+
+    # Optional: tag it
+    if body.tags:
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        for tag in body.tags[:5]:
+            t_norm = tag.strip().lower()[:48]
+            if not t_norm:
+                continue
+            stmt = pg_insert(VaultTag).values(
+                document_id=d.id, tag=t_norm, source="ai",
+            ).on_conflict_do_nothing()
+            await session.execute(stmt)
+
+    await session.commit()
+    asyncio.create_task(_reindex_then_enrich(d.id, body.content_md))
+    return _doc_out(d)
 
 
 @router.post("/documents", response_model=DocumentOut, status_code=201)

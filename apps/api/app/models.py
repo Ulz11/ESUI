@@ -241,6 +241,21 @@ class FileChunk(Base):
 
 
 class VaultDocument(Base):
+    """Vault entries.
+
+    content_type values:
+      - note               structured note
+      - journal            dated reflective writing
+      - draft              works-in-progress
+      - research           research excerpts / sourced material
+      - reference          imported from a file or a saved quote
+      - idea               quick captures
+      - chat_history       archived chat transcript (saved from Chat)
+      - project_artifact   durable output from Obama / Ulzii — market
+                           research, 3-scenario sim, knowledge map,
+                           mind map, etc. `kind` carries the subtype.
+    """
+
     __tablename__ = "vault_documents"
 
     id: Mapped[uuid_pk]
@@ -252,6 +267,7 @@ class VaultDocument(Base):
     content_type: Mapped[str] = mapped_column(
         String, nullable=False, default="note"
     )
+    kind: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     source_file_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("files.id"), nullable=True
     )
@@ -264,7 +280,10 @@ class VaultDocument(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "content_type IN ('note','journal','draft','research','reference')",
+            "content_type IN ("
+            "'note','journal','draft','research','reference',"
+            "'idea','chat_history','project_artifact'"
+            ")",
             name="vault_content_type_check",
         ),
     )
@@ -455,10 +474,10 @@ class Signal(Base):
     )
 
 
-class TogetherMedia(Base):
-    """Items in the Together gallery — images and videos Esui drops in."""
+class BeautyMedia(Base):
+    """Items in the Beauty gallery — images and videos Esui drops in."""
 
-    __tablename__ = "together_media"
+    __tablename__ = "beauty_media"
 
     id: Mapped[uuid_pk]
     file_id: Mapped[uuid_fk] = mapped_column(

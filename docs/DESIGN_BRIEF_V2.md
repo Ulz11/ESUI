@@ -1,40 +1,64 @@
 # ESUI — Design Pass V2
 
-This is a follow-up handoff. You built v1; it works. **Read `docs/DESIGN_BRIEF.md` first** for foundational context (the product, the people, palette, typography, motion language, voice). This brief covers only what changed and what needs new or better design.
+> **Read this preamble before anything else.** The body of this document went
+> through several iterations. The product map below is the final, locked
+> spec — it overrides any earlier section it contradicts. Use the body's
+> *aesthetic and engineering* guidance, but use the **product map** for
+> *what to build* and *what each widget is for*.
 
-Don't redo what works. Login flow, AppShell, TopNav, BentoHome, ChatWidget composer skeleton, VaultWidget editor, ExamWidget shell — all good. Touch them only where this brief calls for it.
+**Read `docs/DESIGN_BRIEF.md` first** for foundational context (palette,
+typography, motion language, voice).
 
 ---
 
-## Two scope changes since v1
+## Locked product map (overrides prior sections on conflict)
 
-### Together — pivoted to a plain gallery
+ESUI is **single-tenant**. Esui is the only user. The AI is named after
+her boyfriend (Ulzii / Obama) because that intimacy is the gift; he is
+the engineer, not a co-user. He retains a read-only window into the
+**Beauty** gallery; everything else is hers privately.
 
-The compositing feature was removed. There is no longer:
-- The Moment Prompt slide-in card (component deleted)
-- The 4-warm-message skip pool
-- AI image compositing (Remove.bg + Stability)
-- The prompt scheduler
-- The "Esui-only" gating
+Six top-level routes:
 
-What it is now: **a shared drag-drop gallery for images and videos.** That's the entire feature. Either user can drop in. Both see all items. Either can delete. Optional caption per item. The user described it as **"formal and clean modern format. That's it."**
-
-### Signals — pivoted to a user-curated quote feed
-
-The RSS pull, AI topic curation (Perplexity Sonar), 6-hour refresh cycle, ephemeral expiration, drops, dismisses, engagement personalization — all removed. The 6 categories collapsed to 4, locked.
-
-What it is now: **a commonplace book.** Esui pastes in quotes from her reading. Four sources, locked:
-
-| key | source |
+| Route | What it is |
 |---|---|
-| `mathematics` | Mathematics for Human Flourishing — Francis Su |
-| `arabic_philosophy` | Arabian / Arabic philosophy (Al-Farabi, Ibn Sina, Ibn Rushd, etc.) |
-| `chinese_philosophy` | Chinese philosophy (Tao Te Ching, Zhuangzi, Sun Tzu, etc.) |
-| `elements_of_ai` | Elements of AI course · elementsofai.com |
+| **Chat** | Two engineered modes — Obama (Tech / Business / Founder) and Ulzii (TOK / Teacher / Growth). Streaming, memory, retrieval. The two voices have distinct affordances and visual register. |
+| **Calendar** | Top-level. Daily schedule planner with AI ("plan with AI" → opus runs `/tasks/plan`; she reviews, accepts → `/tasks/bulk` saves). |
+| **Vault** | Four tabs: **Ideas** · **Notes** · **Chat history** · **Project artifacts**. Plus a Graph tab if you want a fifth (knowledge constellation across her writing). |
+| **Beauty** *(was "Together")* | Gallery for the photos and videos she drops in. Formal, clean, modern. Badrushk has read-only access here — and only here. |
+| **Daily Signals** | Hourly AI-curated quote feed from FOUR locked sources: Chinese philosophy · Arabic philosophy · Francis Su (Mathematics for Human Flourishing) · Inspiration texts (not cringe). |
+| **Exam** | Study compression — cheatsheets, practice sets, concept maps, knowledge graphs (3D), simulations. Mode-aware (Ulzii cheatsheet ≠ Obama cheatsheet). |
 
-Quotes persist. No expiration. No AI involvement. She can edit, delete, pin to vault.
+### What each persona can produce
 
-This widget is for **contemplation, not consumption.** Different design language than a news feed.
+**Obama (Tech / Business)**
+- Market research with named players, moats, seams
+- 3-scenario simulations (conservative / base / aggressive)
+- Tech-stack proposals (with the swap-out path)
+- Decision memos
+→ saved to Vault as a **project_artifact** via the `save_artifact` tool.
+
+**Ulzii (TOK / Teacher / Growth)**
+- Knowledge maps (Voronoi-style, AOK-grouped)
+- Mind maps
+- TOK explorations (knowledge questions, ways of knowing diagnosis)
+- Histories and adjacent areas of knowledge
+→ saved to Vault as a **project_artifact** via the `save_artifact` tool.
+
+When the AI produces something durable, it emits a
+`vault_artifact_suggestion` content block in the streamed message. The
+UI renders that block as a "save to vault" card. On click → POST
+`/api/v1/vault/artifacts` with title + content_md + kind.
+
+### What changed at the wire level
+
+- `/api/v1/together/*` → `/api/v1/beauty/*` (table renamed `beauty_media`).
+- `vault_documents.content_type` extended with `idea`, `chat_history`, `project_artifact`. New nullable `kind` column for project_artifact subkinds.
+- New endpoint: `POST /api/v1/conversations/:id/archive-to-vault` → snapshots a conversation as a `chat_history` Vault doc.
+- New endpoint: `POST /api/v1/vault/artifacts` → saves a project_artifact from a chat tool-use card.
+- New chat tool: `save_artifact` (alongside `pin_to_vault`).
+- Daily Signals reverts to AI-curated, hourly. Categories: `chinese_philosophy`, `arabic_philosophy`, `francis_su`, `inspiration`. Manual POST still works for her own drops on top of the feed.
+- All private surfaces gated by `require_esui`. Beauty's writes are esui-only; reads (GET / signed URL refresh) allow Badrushk.
 
 ---
 

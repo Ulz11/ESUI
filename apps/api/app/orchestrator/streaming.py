@@ -37,7 +37,11 @@ from app.orchestrator.intent import classify
 from app.orchestrator.modes import Mode, default_temperature, system_blocks
 from app.orchestrator.retrieval import retrieve_for_chat
 from app.orchestrator.router import Alias, select
-from app.orchestrator.tools import CHAT_TOOLS, render_pin_suggestion
+from app.orchestrator.tools import (
+    CHAT_TOOLS,
+    render_pin_suggestion,
+    render_save_artifact,
+)
 
 EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 
@@ -180,6 +184,9 @@ async def run_chat_turn(
                 args = chunk.tool_input or {}
                 if chunk.tool_name == "pin_to_vault":
                     block = render_pin_suggestion(args)
+                    extra_blocks.append(block)
+                elif chunk.tool_name == "save_artifact":
+                    block = render_save_artifact(args)
                     extra_blocks.append(block)
                 elif chunk.tool_name == "cite":
                     url_ = (args.get("url") or "").strip()
