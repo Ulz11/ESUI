@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_user
+from app.core.auth import require_esui
 from app.core.db import get_session
 from app.core.errors import bad_request, not_found
 from app.models import Signal, SignalPin, User, VaultDocument
@@ -102,7 +102,7 @@ def _default_source_for(category: str) -> str | None:
 
 @router.get("", response_model=list[QuoteOut])
 async def list_quotes(
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
     category: str | None = None,
     limit: int = 200,
@@ -120,7 +120,7 @@ async def list_quotes(
 @router.post("", response_model=QuoteOut, status_code=201)
 async def add_quote(
     body: QuoteCreate,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> QuoteOut:
     if body.category not in VALID_CATEGORIES:
@@ -147,7 +147,7 @@ async def add_quote(
 @router.get("/{signal_id}", response_model=QuoteOut)
 async def get_quote(
     signal_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> QuoteOut:
     s = await session.get(Signal, signal_id)
@@ -160,7 +160,7 @@ async def get_quote(
 async def update_quote(
     signal_id: UUID,
     body: QuotePatch,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> QuoteOut:
     s = await session.get(Signal, signal_id)
@@ -185,7 +185,7 @@ async def update_quote(
 @router.delete("/{signal_id}", status_code=204)
 async def delete_quote(
     signal_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     s = await session.get(Signal, signal_id)
@@ -201,7 +201,7 @@ async def delete_quote(
 @router.post("/{signal_id}/pin", response_model=dict[str, str])
 async def pin_to_vault(
     signal_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, str]:
     """Save the quote as a Vault document so it shows up in chat retrieval."""

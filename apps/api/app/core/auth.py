@@ -95,6 +95,21 @@ async def current_user(
     return user
 
 
+async def require_esui(user: User = Depends(current_user)) -> User:
+    """ESUI is single-tenant. Most surfaces are private to Esui herself.
+
+    Badrushk has a read-only window into the Beauty gallery (her dropped
+    photos). Everything else — chat, vault, calendar, exam, signals,
+    memory — is hers.
+    """
+    if user.role != "esui":
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "this surface is private to Esui",
+        )
+    return user
+
+
 async def find_user_by_email(session: AsyncSession, email: str) -> User | None:
     result = await session.execute(
         select(User).where(User.email == email.strip().lower())

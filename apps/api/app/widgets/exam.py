@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_user
+from app.core.auth import require_esui
 from app.core.db import SessionLocal, get_session
 from app.core.errors import bad_request, not_found
 from app.core.log import log
@@ -143,7 +143,7 @@ async def _ensure_owner(
 
 @router.get("/workspaces", response_model=list[WorkspaceOut])
 async def list_workspaces(
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
     limit: int = 50,
 ) -> list[WorkspaceOut]:
@@ -159,7 +159,7 @@ async def list_workspaces(
 @router.post("/workspaces", response_model=WorkspaceOut, status_code=201)
 async def create_workspace(
     body: WorkspaceCreate,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> WorkspaceOut:
     w = ExamWorkspace(owner_id=user.id, title=body.title, subject=body.subject)
@@ -171,7 +171,7 @@ async def create_workspace(
 @router.get("/workspaces/{ws_id}", response_model=WorkspaceOut)
 async def get_workspace(
     ws_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> WorkspaceOut:
     w = await _ensure_owner(session, ws_id, user.id)
@@ -181,7 +181,7 @@ async def get_workspace(
 @router.delete("/workspaces/{ws_id}", status_code=204)
 async def delete_workspace(
     ws_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     w = await _ensure_owner(session, ws_id, user.id)
@@ -195,7 +195,7 @@ async def delete_workspace(
 @router.get("/workspaces/{ws_id}/sources", response_model=list[SourceOut])
 async def list_sources(
     ws_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> list[SourceOut]:
     await _ensure_owner(session, ws_id, user.id)
@@ -209,7 +209,7 @@ async def list_sources(
 async def add_source(
     ws_id: UUID,
     body: dict[str, str],
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> SourceOut:
     await _ensure_owner(session, ws_id, user.id)
@@ -234,7 +234,7 @@ async def add_source(
 @router.get("/workspaces/{ws_id}/artifacts", response_model=list[ArtifactOut])
 async def list_artifacts(
     ws_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> list[ArtifactOut]:
     await _ensure_owner(session, ws_id, user.id)
@@ -250,7 +250,7 @@ async def list_artifacts(
 async def generate_artifact(
     ws_id: UUID,
     body: GenerateRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> ArtifactOut:
     await _ensure_owner(session, ws_id, user.id)
@@ -279,7 +279,7 @@ async def generate_artifact(
 @router.get("/artifacts/{artifact_id}", response_model=ArtifactOut)
 async def get_artifact(
     artifact_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> ArtifactOut:
     a = await session.get(ExamArtifact, artifact_id)
@@ -298,7 +298,7 @@ async def get_artifact(
 async def create_attempt(
     artifact_id: UUID,
     body: AttemptCreate,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> AttemptOut:
     a = await session.get(ExamArtifact, artifact_id)

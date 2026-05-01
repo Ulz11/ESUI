@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_user
+from app.core.auth import current_user, require_esui
 from app.core.db import get_session
 from app.core.errors import not_found
 from app.models import Conversation, ConversationParticipant, Message, User
@@ -123,7 +123,7 @@ async def _ensure_participant(
 
 @router.get("", response_model=list[ConversationOut])
 async def list_conversations(
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
     archived: bool = False,
     limit: int = 50,
@@ -142,7 +142,7 @@ async def list_conversations(
 @router.post("", response_model=ConversationOut, status_code=201)
 async def create_conversation(
     body: ConversationCreate,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> ConversationOut:
     conv = Conversation(
@@ -169,7 +169,7 @@ async def create_conversation(
 @router.get("/{conv_id}", response_model=ConversationOut)
 async def get_conversation(
     conv_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> ConversationOut:
     conv = await _ensure_participant(session, conv_id, user.id)
@@ -180,7 +180,7 @@ async def get_conversation(
 async def update_conversation(
     conv_id: UUID,
     body: ConversationPatch,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> ConversationOut:
     conv = await _ensure_participant(session, conv_id, user.id)
@@ -198,7 +198,7 @@ async def update_conversation(
 @router.delete("/{conv_id}", status_code=204)
 async def delete_conversation(
     conv_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     conv = await _ensure_participant(session, conv_id, user.id)
@@ -212,7 +212,7 @@ async def delete_conversation(
 @router.get("/{conv_id}/messages", response_model=list[MessageOut])
 async def list_messages(
     conv_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
     before: datetime | None = None,
     limit: int = 50,
@@ -237,7 +237,7 @@ class SearchRequest(BaseModel):
 async def search_messages(
     conv_id: UUID,
     body: SearchRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> list[MessageOut]:
     """Semantic search across messages in this conversation."""
@@ -273,7 +273,7 @@ async def search_messages(
 async def send_message(
     conv_id: UUID,
     body: MessageSend,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> MessageOut:
     """Persist user message; AI turn streams over Socket.io.

@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_user
+from app.core.auth import require_esui
 from app.core.db import get_session
 from app.core.errors import bad_request, not_found
 from app.models import AICall, Task, User
@@ -125,7 +125,7 @@ def _visibility(owner_id: UUID, partner_id: UUID | None):
 
 @router.get("", response_model=list[TaskOut])
 async def list_tasks(
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
     *,
     kind: TaskKind | None = None,
@@ -169,7 +169,7 @@ async def list_tasks(
 
 @router.get("/today", response_model=list[TaskOut])
 async def today_tasks(
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> list[TaskOut]:
     """Convenience: tasks/events touching the next 24h, plus undated open todos."""
@@ -201,7 +201,7 @@ async def today_tasks(
 @router.post("", response_model=TaskOut, status_code=201)
 async def create_task(
     body: TaskCreate,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> TaskOut:
     if body.kind == "event" and body.starts_at is None:
@@ -231,7 +231,7 @@ async def create_task(
 @router.get("/{task_id}", response_model=TaskOut)
 async def get_task(
     task_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> TaskOut:
     t = await session.get(Task, task_id)
@@ -247,7 +247,7 @@ async def get_task(
 async def patch_task(
     task_id: UUID,
     body: TaskPatch,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> TaskOut:
     t = await session.get(Task, task_id)
@@ -273,7 +273,7 @@ async def patch_task(
 @router.delete("/{task_id}", status_code=204)
 async def delete_task(
     task_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     t = await session.get(Task, task_id)
@@ -289,7 +289,7 @@ async def delete_task(
 @router.post("/{task_id}/complete", response_model=TaskOut)
 async def complete_task(
     task_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> TaskOut:
     t = await session.get(Task, task_id)
@@ -305,7 +305,7 @@ async def complete_task(
 @router.post("/{task_id}/uncomplete", response_model=TaskOut)
 async def uncomplete_task(
     task_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> TaskOut:
     t = await session.get(Task, task_id)
@@ -324,7 +324,7 @@ async def uncomplete_task(
 @router.post("/bulk", response_model=list[TaskOut], status_code=201)
 async def create_bulk(
     body: list[TaskCreate],
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> list[TaskOut]:
     """Create many tasks/events at once. Used after Esui accepts an AI plan."""
@@ -389,7 +389,7 @@ class PlanResponse(BaseModel):
 @router.post("/plan", response_model=PlanResponse)
 async def plan_with_ai(
     body: PlanRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> PlanResponse:
     """Generate a structured day plan via Opus.

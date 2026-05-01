@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_user
+from app.core.auth import require_esui
 from app.core.db import SessionLocal, get_session
 from app.core.errors import bad_request, not_found
 from app.ingest.parse import ingest_file
@@ -112,7 +112,7 @@ async def _partner_id(session: AsyncSession, user: User) -> UUID | None:
 
 @router.get("/documents", response_model=list[DocumentOut])
 async def list_documents(
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
     archived: bool = False,
     shared_only: bool = False,
@@ -134,7 +134,7 @@ async def list_documents(
 @router.post("/documents", response_model=DocumentOut, status_code=201)
 async def create_document(
     body: DocumentCreate,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentOut:
     d = VaultDocument(
@@ -154,7 +154,7 @@ async def create_document(
 @router.get("/documents/{doc_id}", response_model=DocumentOut)
 async def get_document(
     doc_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentOut:
     d = await session.get(VaultDocument, doc_id)
@@ -170,7 +170,7 @@ async def get_document(
 async def patch_document(
     doc_id: UUID,
     body: DocumentPatch,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentOut:
     d = await session.get(VaultDocument, doc_id)
@@ -203,7 +203,7 @@ async def patch_document(
 @router.delete("/documents/{doc_id}", status_code=204)
 async def delete_document(
     doc_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     d = await session.get(VaultDocument, doc_id)
@@ -219,7 +219,7 @@ async def delete_document(
 @router.post("/search", response_model=list[SearchHit])
 async def search(
     body: SearchRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> list[SearchHit]:
     if not body.query.strip():
@@ -286,7 +286,7 @@ class TagBody(BaseModel):
 @router.get("/documents/{doc_id}/tags", response_model=list[dict[str, str]])
 async def list_tags(
     doc_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict[str, str]]:
     d = await session.get(VaultDocument, doc_id)
@@ -303,7 +303,7 @@ async def list_tags(
 async def add_tag(
     doc_id: UUID,
     body: TagBody,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, str]:
     d = await session.get(VaultDocument, doc_id)
@@ -324,7 +324,7 @@ async def add_tag(
 async def delete_tag(
     doc_id: UUID,
     tag: str,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     d = await session.get(VaultDocument, doc_id)
@@ -362,7 +362,7 @@ class GraphOut(BaseModel):
 
 @router.get("/graph", response_model=GraphOut)
 async def vault_graph(
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
     center: UUID | None = None,
     depth: int = 2,
@@ -459,7 +459,7 @@ async def vault_graph(
 @router.post("/import-file", response_model=DocumentOut, status_code=201)
 async def import_file(
     body: ImportFileRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentOut:
     file_id = UUID(body.file_id)

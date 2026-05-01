@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_user
+from app.core.auth import current_user, require_esui
 from app.core.db import get_session
 from app.core.errors import bad_request, not_found
 from app.integrations import r2
@@ -125,7 +125,7 @@ async def upload_media(
     file: UploadFile = F(...),
     caption: Optional[str] = Form(None),
     taken_at: Optional[datetime] = Form(None),
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> MediaOut:
     """Drop an image or video into the gallery."""
@@ -185,7 +185,7 @@ async def upload_media(
 async def update_media(
     media_id: UUID,
     body: dict[str, str | None],
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> MediaOut:
     m = await session.get(TogetherMedia, media_id)
@@ -206,7 +206,7 @@ async def update_media(
 @router.delete("/media/{media_id}", status_code=204)
 async def delete_media(
     media_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     m = await session.get(TogetherMedia, media_id)

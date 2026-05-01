@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_user
+from app.core.auth import require_esui
 from app.core.db import get_session
 from app.core.errors import bad_request, not_found
 from app.core.redis import get_redis
@@ -78,7 +78,7 @@ def _mem_out(m: Memory) -> MemoryOut:
 
 @router.get("", response_model=list[MemoryOut])
 async def list_memories(
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
     category: str | None = None,
     scope: str | None = None,
@@ -103,7 +103,7 @@ async def list_memories(
 @router.post("", response_model=MemoryOut, status_code=201)
 async def create_memory(
     body: MemoryCreate,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> MemoryOut:
     if not body.text.strip():
@@ -124,7 +124,7 @@ async def create_memory(
 async def patch_memory(
     memory_id: UUID,
     body: MemoryPatch,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> MemoryOut:
     m = await session.get(Memory, memory_id)
@@ -149,7 +149,7 @@ async def patch_memory(
 @router.post("/{memory_id}/forget", status_code=204)
 async def forget_memory(
     memory_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     m = await session.get(Memory, memory_id)
@@ -171,7 +171,7 @@ async def forget_memory(
 @router.post("/search", response_model=list[MemoryOut])
 async def search_memories(
     body: MemorySearch,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> list[MemoryOut]:
     if not body.query.strip():

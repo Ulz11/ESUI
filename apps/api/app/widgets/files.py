@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_user
+from app.core.auth import require_esui
 from app.core.db import get_session
 from app.core.errors import not_found
 from app.integrations import r2
@@ -94,7 +94,7 @@ def _file_out(f: File) -> FileOut:
 @router.post("", response_model=FileOut, status_code=201)
 async def upload_file(
     file: UploadFile = F(...),
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> FileOut:
     body = await file.read()
@@ -144,7 +144,7 @@ async def upload_file(
 @router.get("/{file_id}", response_model=FileOut)
 async def get_file(
     file_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> FileOut:
     f = await session.get(File, file_id)
@@ -161,7 +161,7 @@ class SignedUrlOut(BaseModel):
 @router.post("/{file_id}/url", response_model=SignedUrlOut)
 async def signed_url(
     file_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> SignedUrlOut:
     f = await session.get(File, file_id)
@@ -174,7 +174,7 @@ async def signed_url(
 @router.delete("/{file_id}", status_code=204)
 async def delete_file(
     file_id: UUID,
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     f = await session.get(File, file_id)
@@ -188,7 +188,7 @@ async def delete_file(
 
 @router.get("", response_model=list[FileOut])
 async def list_files(
-    user: User = Depends(current_user),
+    user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
     kind: str | None = None,
     limit: int = 50,
