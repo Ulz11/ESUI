@@ -1,10 +1,10 @@
 import { AuthGuard } from "@/lib/auth-guard";
 import { V3App } from "@/components/v3/V3App";
 
-export default function VaultRoute() {
+export default function CalendarRoute() {
   return (
     <AuthGuard>
-      <V3App initialRoute="vault" />
+      <V3App initialRoute="calendar" />
     </AuthGuard>
   );
 }

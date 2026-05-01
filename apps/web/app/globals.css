@@ -1,138 +1,140 @@
-/* ESUI — global stylesheet
- * Ports the v2 stylesheet (which is a superset of v1) plus the keyframes
- * the design files originally injected from JS. Every CSS variable referenced
- * by any *.jsx in design_extract/ resolves here.
+/* ESUI — global stylesheet (V3)
+ *
+ * Paper-and-ink palette. Sky / Forest / Vanilla / Navy as accents.
+ * Variables match those used by the V3 component set.
  */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* surfaces */
-  --page:    #f2ede5;
-  --surface: #ffffff;
-  --border:  #e6dfd4;
+  /* fonts (loaded by app/layout.tsx via next/font) */
+  --serif: var(--font-serif), "Crimson Pro", "Iowan Old Style", Georgia, serif;
+  --sans:  var(--font-inter),  Inter, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono:  ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
 
-  /* navy text */
-  --navy:    #1c1f2e;
-  --navy-70: rgba(28,31,46,.70);
-  --navy-60: rgba(28,31,46,.60);
-  --navy-45: rgba(28,31,46,.45);
-  --navy-35: rgba(28,31,46,.35);
-  --navy-20: rgba(28,31,46,.20);
-  --navy-15: rgba(28,31,46,.15);
-  --navy-10: rgba(28,31,46,.10);
-  --navy-08: rgba(28,31,46,.08);
+  /* paper / ink */
+  --paper:    #fbf8f1;
+  --paper-2:  #f5f0e3;
+  --surface:  #ffffff;
+  --surface-2:#f9f4e7;
 
-  /* accents */
-  --sky:           #5b9ab8;
-  --sky-light:     #e8f2f8;
-  --sky-deep:      #3d7a96;
-  --sky-bg:        rgba(91,154,184,.12);
-  --sky-border:    rgba(91,154,184,.30);
+  --ink:      #1a1d2c;
+  --ink-2:    #2c2f40;
+  --ink-70:   #4a4d5e;
+  --ink-50:   #74778a;
+  --ink-35:   #9b9eb0;
+  --ink-10:   #d9d6cb;
+  --ink-06:   #ece8d9;
 
-  --forest:        #3e6f54;
-  --forest-light:  #e4f0e9;
-  --forest-deep:   #2d5440;
-  --forest-bg:     rgba(62,111,84,.12);
-  --forest-border: rgba(62,111,84,.30);
+  --rule:        #d6d1c2;
+  --rule-soft:   #e6e1d2;
 
-  --amber:        #8c6b3a;
-  --amber-light:  #f4ead9;
-  --rose:         #b05068;
-  --rose-light:   #f5e4ea;
-  --indigo:       #3a3d70;
-  --indigo-light: #e8e9f5;
+  /* mode accents */
+  --sky:        #5e8aa8;
+  --sky-deep:   #2d5973;
+  --sky-soft:   #d8e3eb;
+  --forest:     #5a7a5a;
+  --forest-deep:#324d36;
+  --forest-soft:#dde6dd;
 
-  /* v1 alias names — used by widget files */
-  --vanilla:        #f8f3ec;
-  --vanilla-2:      #f0ebe2;
-  --vanilla-border: #e4ddd3;
-  --white:          #ffffff;
-
-  /* type */
-  --sans:  'Inter', system-ui, sans-serif;
-  --serif: 'Source Serif 4', Georgia, serif;
+  /* roles & semantics */
+  --gold:       #b9913a;
+  --rose:       #a64f63;
+  --ochre:      #8a6a3c;
 
   /* radii */
-  --r:  20px;
-  --rs: 10px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
 
   /* shadows */
-  --shadow-card:  0 1px 2px rgba(28,31,46,.04), 0 4px 16px rgba(28,31,46,.07);
-  --shadow-hover: 0 2px 6px rgba(28,31,46,.06), 0 12px 40px rgba(28,31,46,.12);
+  --shadow-1: 0 1px 2px rgba(26,29,44,.05);
+  --shadow-2: 0 1px 2px rgba(26,29,44,.05), 0 8px 30px -12px rgba(26,29,44,.18);
+  --shadow-paper: 0 1px 2px rgba(26,29,44,.04);
+
+  /* legacy aliases — keep some V1/V2 names mapping to V3 so older
+     components don't break while the codebase migrates. */
+  --page:    var(--paper);
+  --border:  var(--rule);
+  --navy:    var(--ink);
+  --white:   var(--surface);
+  --vanilla: var(--paper-2);
+  --vanilla-border: var(--rule-soft);
+  --navy-70: var(--ink-70);
+  --navy-60: var(--ink-50);
+  --navy-45: var(--ink-35);
+  --navy-35: var(--ink-35);
+  --navy-20: rgba(26,29,44,.20);
+  --navy-15: rgba(26,29,44,.15);
+  --navy-10: rgba(26,29,44,.10);
+  --navy-08: rgba(26,29,44,.08);
 }
 
-html, body, #__next {
-  width: 100%;
-  height: 100%;
+[data-theme="dark"] {
+  --paper:    #161824;
+  --paper-2:  #1d2035;
+  --surface:  #1d2035;
+  --surface-2:#242739;
+
+  --ink:      #e8e2d8;
+  --ink-2:    #d4d0c4;
+  --ink-70:   rgba(232,226,216,.78);
+  --ink-50:   rgba(232,226,216,.58);
+  --ink-35:   rgba(232,226,216,.40);
+  --ink-10:   rgba(232,226,216,.14);
+  --ink-06:   rgba(232,226,216,.08);
+
+  --rule:        #2a2e48;
+  --rule-soft:   #232540;
+
+  --sky-soft:   rgba(94,138,168,.18);
+  --forest-soft:rgba(90,122,90,.18);
+
+  --shadow-paper: 0 1px 2px rgba(0,0,0,.30);
+  --shadow-1: 0 1px 2px rgba(0,0,0,.30);
+  --shadow-2: 0 1px 2px rgba(0,0,0,.30), 0 12px 40px rgba(0,0,0,.45);
+}
+
+html, body, #__next { height: 100%; }
+body {
   font-family: var(--sans);
-  background: var(--page);
-  color: var(--navy);
+  color: var(--ink);
+  background: var(--paper);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-button {
-  cursor: pointer;
-  border: none;
-  background: none;
-  font-family: inherit;
-  color: inherit;
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 4px; }
+
+input, textarea, select { font: inherit; color: inherit; }
+
+a { color: inherit; text-decoration: none; }
+
+.mono { font-family: var(--mono); font-feature-settings: "tnum"; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* fade-in / fade-up */
+@keyframes fi { from { opacity: 0 } to { opacity: 1 } }
+@keyframes fu { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+.fi { animation: fi .25s ease both; }
+.fu { animation: fu .3s ease both; }
+
+/* pulse + shimmer used by Skel and avatars */
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .55 } }
+@keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
+@keyframes blink { 50% { opacity: 0 } }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
 }
 
-input, textarea {
-  font-family: inherit;
-  color: inherit;
-  background: none;
-  border: none;
-  outline: none;
-}
-
-::-webkit-scrollbar { width: 4px; height: 4px; }
+/* scrollbars — quiet */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--ink-10); border-radius: 10px; border: 2px solid var(--paper); }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-35); }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-/* keyframes — used directly via `animation:` in inline styles
-   and via the helper classes below. */
-@keyframes fadeUp   { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
-@keyframes fadeIn   { from { opacity:0; } to { opacity:1; } }
-@keyframes slideR   { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:none; } }
-@keyframes corner   { from { opacity:0; transform:translateY(12px) scale(.96); } to { opacity:1; transform:none; } }
-@keyframes blink    { 0%,100%{opacity:1} 50%{opacity:0} }
-@keyframes pulse    { 0%,100%{opacity:.6} 50%{opacity:1} }
-@keyframes spin     { to { transform:rotate(360deg); } }
-@keyframes shimmer  { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-@keyframes stagger  { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
-
-/* keyframes from esui-home.jsx (originally injected from JS) */
-@keyframes floatY    { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-@keyframes floatY2   { 0%,100%{transform:translateY(-4px)} 50%{transform:translateY(2px)} }
-@keyframes growBar   { from{width:0} }
-@keyframes pulseGlow { 0%,100%{box-shadow:0 0 0 0 transparent} 50%{box-shadow:0 0 12px 3px currentColor} }
-@keyframes borderIn  { from{transform:scaleY(0)} to{transform:scaleY(1)} }
-
-/* helper classes referenced by both v1 and v2 designs */
-.anim-fade-up  { animation: fadeUp .18s ease forwards; }
-.anim-slide-r  { animation: slideR .22s ease forwards; }
-.anim-corner   { animation: corner .4s cubic-bezier(.34,1.56,.64,1) forwards; }
-.fu  { animation: fadeUp .22s ease both; }
-.sr  { animation: slideR .22s ease both; }
-.cor { animation: corner .4s cubic-bezier(.34,1.56,.64,1) both; }
-.sig-card-border { transform-origin: top; animation: borderIn .5s ease both; }
-.float-a { animation: floatY  4.5s ease-in-out infinite; }
-.float-b { animation: floatY2 5.2s ease-in-out infinite; }
-
-.skeleton {
-  background: linear-gradient(90deg, var(--vanilla-2) 25%, var(--vanilla-border) 50%, var(--vanilla-2) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.6s infinite;
-  border-radius: 4px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
+::selection { background: rgba(94,138,168,.25); }

@@ -136,7 +136,7 @@ export type ExamWorkspace = {
   updated_at: string;
 };
 
-export type ArtifactKind =
+export type ExamArtifactKind =
   | "cheatsheet"
   | "practice_set"
   | "concept_map"
@@ -146,7 +146,7 @@ export type ArtifactKind =
 export type ExamArtifact = {
   id: string;
   workspace_id: string;
-  kind: ArtifactKind;
+  kind: ExamArtifactKind;
   title: string;
   mode: Mode;
   status: "generating" | "ready" | "error";

@@ -1,10 +1,10 @@
-import { AppShell } from "@/components/AppShell";
 import { AuthGuard } from "@/lib/auth-guard";
+import { V3App } from "@/components/v3/V3App";
 
 export default function SignalsRoute() {
   return (
     <AuthGuard>
-      <AppShell initialRoute="signals" />
+      <V3App initialRoute="signals" />
     </AuthGuard>
   );
 }
