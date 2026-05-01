@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import current_user
 from app.core.db import get_session
 from app.core.errors import bad_request, not_found
-from app.models import Task, User
+from app.models import AICall, Task, User
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -316,3 +316,157 @@ async def uncomplete_task(
     t.updated_at = datetime.now(tz=timezone.utc)
     await session.commit()
     return _t_out(t)
+
+
+# ---------- bulk creation (used by planner accept) ----------
+
+
+@router.post("/bulk", response_model=list[TaskOut], status_code=201)
+async def create_bulk(
+    body: list[TaskCreate],
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[TaskOut]:
+    """Create many tasks/events at once. Used after Esui accepts an AI plan."""
+    if not body:
+        return []
+    if len(body) > 50:
+        raise bad_request("too many items in one batch (max 50)")
+
+    rows: list[Task] = []
+    for item in body:
+        if item.kind == "event" and item.starts_at is None:
+            raise bad_request(f"event '{item.title}' must have starts_at")
+        if item.ends_at and item.starts_at and item.ends_at < item.starts_at:
+            raise bad_request(f"'{item.title}' has ends_at < starts_at")
+        t = Task(
+            owner_id=user.id,
+            kind=item.kind,
+            title=item.title.strip(),
+            description=item.description,
+            status=item.status,
+            starts_at=item.starts_at,
+            ends_at=item.ends_at,
+            all_day=item.all_day,
+            color=item.color,
+            shared=item.shared,
+            recurrence_rule=item.recurrence_rule,
+            location=item.location,
+        )
+        session.add(t)
+        rows.append(t)
+    await session.commit()
+    return [_t_out(t) for t in rows]
+
+
+# ---------- AI planner ----------
+
+
+class PlanRequest(BaseModel):
+    intent: str = Field(default="", description="What Esui wants to plan; free-form")
+    date_from: datetime
+    date_to: datetime
+    mode: Literal["ulzii", "obama"] = "ulzii"
+
+
+class PlannedItem(BaseModel):
+    kind: Literal["task", "event"]
+    title: str
+    description: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    all_day: bool = False
+    color: str | None = None
+    rationale: str | None = None
+
+
+class PlanResponse(BaseModel):
+    items: list[PlannedItem]
+    summary: str
+    open_questions: list[str] = []
+
+
+@router.post("/plan", response_model=PlanResponse)
+async def plan_with_ai(
+    body: PlanRequest,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> PlanResponse:
+    """Generate a structured day plan via Opus.
+
+    Does NOT save the plan. The frontend should display it for Esui to review,
+    edit, then commit via `POST /api/v1/tasks/bulk`.
+    """
+    if body.date_to < body.date_from:
+        raise bad_request("date_to must be >= date_from")
+
+    # Pull existing items in range (visible to this user, not archived).
+    partner = await _partner_id(session, user)
+    rows = await session.execute(
+        select(Task)
+        .where(_visibility(user.id, partner))
+        .where(Task.archived_at.is_(None))
+        .where(Task.status != "cancelled")
+        .where(
+            or_(
+                (Task.starts_at.is_not(None))
+                & (Task.starts_at >= body.date_from)
+                & (Task.starts_at <= body.date_to),
+                (Task.ends_at.is_not(None))
+                & (Task.ends_at >= body.date_from)
+                & (Task.ends_at <= body.date_to),
+            )
+        )
+        .order_by(Task.starts_at.asc().nullslast())
+    )
+    existing_items = []
+    for t in rows.scalars().all():
+        existing_items.append({
+            "kind": t.kind,
+            "title": t.title,
+            "starts_at": t.starts_at.isoformat() if t.starts_at else None,
+            "ends_at": t.ends_at.isoformat() if t.ends_at else None,
+        })
+
+    # Pull retrieval context — vault + memory only (no live conversation).
+    from uuid import UUID as _UUID
+    from app.orchestrator.retrieval import retrieve_for_chat
+    retrieved = ""
+    if body.intent.strip():
+        try:
+            retrieved = await retrieve_for_chat(
+                session=session,
+                query=body.intent,
+                user_id=user.id,
+                partner_id=partner,
+                conversation_id=_UUID(int=0),  # no conversation; messages search is empty
+                mode=body.mode,
+            )
+        except Exception:
+            retrieved = ""
+
+    from app.orchestrator.planner import plan_day
+    plan = await plan_day(
+        intent=body.intent,
+        date_from=body.date_from,
+        date_to=body.date_to,
+        existing_items=existing_items,
+        retrieved_context=retrieved,
+        mode=body.mode,
+        timezone_name=user.timezone,
+    )
+
+    tokens_in = plan.pop("tokens_in", None)
+    tokens_out = plan.pop("tokens_out", None)
+    session.add(AICall(
+        user_id=user.id,
+        task="planner.plan",
+        mode=body.mode,
+        provider="anthropic",
+        model_id="claude-opus",
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+    ))
+    await session.commit()
+
+    return PlanResponse(**plan)

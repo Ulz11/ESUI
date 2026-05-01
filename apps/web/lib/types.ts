@@ -178,6 +178,84 @@ export type Memory = {
   last_used_at: string | null;
 };
 
+// Tasks (calendar + scheduling)
+export type TaskKind = "task" | "event";
+export type TaskStatus = "pending" | "in_progress" | "done" | "cancelled";
+
+export type Task = {
+  id: string;
+  owner_id: string;
+  kind: TaskKind;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  starts_at: string | null;
+  ends_at: string | null;
+  all_day: boolean;
+  color: string | null;
+  shared: boolean;
+  recurrence_rule: string | null;
+  location: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskCreate = {
+  kind?: TaskKind;
+  title: string;
+  description?: string | null;
+  status?: TaskStatus;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  all_day?: boolean;
+  color?: string | null;
+  shared?: boolean;
+  recurrence_rule?: string | null;
+  location?: string | null;
+};
+
+export type TaskPatch = Partial<TaskCreate> & { archived?: boolean };
+
+// AI planner
+export type PlannedItem = {
+  kind: TaskKind;
+  title: string;
+  description?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  all_day?: boolean;
+  color?: string | null;
+  rationale?: string | null;
+};
+
+export type PlanRequest = {
+  intent: string;
+  date_from: string;        // ISO
+  date_to: string;          // ISO
+  mode?: Mode;
+};
+
+export type PlanResponse = {
+  items: PlannedItem[];
+  summary: string;
+  open_questions: string[];
+};
+
+// Home layout (bento grid)
+export type WidgetLayout = {
+  i: string;        // widget id
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  minW?: number;
+  minH?: number;
+  maxW?: number;
+  maxH?: number;
+  static?: boolean;
+};
+
 export type Usage = {
   today_usd: number;
   daily_cap_usd: number;
