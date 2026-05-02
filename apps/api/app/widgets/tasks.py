@@ -10,7 +10,7 @@ Otherwise private to owner.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -173,7 +173,7 @@ async def today_tasks(
     session: AsyncSession = Depends(get_session),
 ) -> list[TaskOut]:
     """Convenience: tasks/events touching the next 24h, plus undated open todos."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     end = now.replace(hour=23, minute=59, second=59, microsecond=0)
     partner = await _partner_id(session, user)
     q = (
@@ -256,16 +256,16 @@ async def patch_task(
     data = body.model_dump(exclude_unset=True)
     archived = data.pop("archived", None)
     if archived is True:
-        t.archived_at = datetime.now(tz=timezone.utc)
+        t.archived_at = datetime.now(tz=UTC)
     elif archived is False:
         t.archived_at = None
     for k, v in data.items():
         setattr(t, k, v)
     if "status" in data and data["status"] == "done" and t.completed_at is None:
-        t.completed_at = datetime.now(tz=timezone.utc)
+        t.completed_at = datetime.now(tz=UTC)
     if "status" in data and data["status"] != "done":
         t.completed_at = None
-    t.updated_at = datetime.now(tz=timezone.utc)
+    t.updated_at = datetime.now(tz=UTC)
     await session.commit()
     return _t_out(t)
 
@@ -296,7 +296,7 @@ async def complete_task(
     if t is None or t.owner_id != user.id:
         raise not_found("task")
     t.status = "done"
-    t.completed_at = datetime.now(tz=timezone.utc)
+    t.completed_at = datetime.now(tz=UTC)
     t.updated_at = t.completed_at
     await session.commit()
     return _t_out(t)
@@ -313,7 +313,7 @@ async def uncomplete_task(
         raise not_found("task")
     t.status = "pending"
     t.completed_at = None
-    t.updated_at = datetime.now(tz=timezone.utc)
+    t.updated_at = datetime.now(tz=UTC)
     await session.commit()
     return _t_out(t)
 
@@ -430,6 +430,7 @@ async def plan_with_ai(
 
     # Pull retrieval context — vault + memory only (no live conversation).
     from uuid import UUID as _UUID
+
     from app.orchestrator.retrieval import retrieve_for_chat
     retrieved = ""
     if body.intent.strip():

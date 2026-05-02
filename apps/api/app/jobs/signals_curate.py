@@ -12,8 +12,7 @@ One quote per category per cycle. Persistent (no expiration).
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -23,8 +22,7 @@ from app.core.db import SessionLocal
 from app.core.log import log
 from app.integrations.anthropic import MODEL_IDS, get_client
 from app.integrations.voyage import embed_one
-from app.models import AICall, Signal, User
-
+from app.models import AICall, Signal
 
 CATEGORIES = ("chinese_philosophy", "arabic_philosophy", "francis_su", "inspiration")
 
@@ -138,7 +136,7 @@ VOICE
 async def hourly_curate() -> None:
     """One cycle = one new quote per category. Runs hourly via APScheduler."""
     cycle_id = uuid4()
-    cycle_started = datetime.now(tz=timezone.utc)
+    cycle_started = datetime.now(tz=UTC)
 
     log.info("signals.hourly.start", cycle_id=str(cycle_id))
 

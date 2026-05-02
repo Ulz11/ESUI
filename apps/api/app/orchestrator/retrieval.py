@@ -15,22 +15,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.voyage import embed_one
-from app.models import (
-    FileChunk,
-    Memory,
-    MessageEmbedding,
-    MessageFile,
-    VaultChunk,
-    VaultDocument,
-)
 from app.orchestrator.modes import Mode
 
 Source = Literal["vault", "message", "memory", "file"]
@@ -315,5 +307,5 @@ def _age_days(ts: datetime | None) -> float:
     if ts is None:
         return 0.0
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
-    return (datetime.now(tz=timezone.utc) - ts).total_seconds() / 86400.0
+        ts = ts.replace(tzinfo=UTC)
+    return (datetime.now(tz=UTC) - ts).total_seconds() / 86400.0

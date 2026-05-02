@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-from app.integrations.voyage import embed
 from app.core.log import log
+from app.integrations.voyage import embed
 
 
 async def embed_texts(texts: list[str], retries: int = 3) -> list[list[float]]:

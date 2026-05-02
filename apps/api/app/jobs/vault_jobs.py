@@ -7,15 +7,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import insert, select, text
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import SessionLocal
 from app.core.log import log
 from app.integrations.anthropic import MODEL_IDS, get_client
 from app.models import VaultDocument, VaultLink, VaultTag
-
 
 # ---------- auto-tag ----------
 

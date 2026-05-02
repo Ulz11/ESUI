@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import boto3
@@ -31,7 +31,7 @@ def get_client():
 
 def build_key(user_id: UUID, file_id: UUID, ext: str = "") -> str:
     """`files/<user>/<yyyy>/<mm>/<file_id><.ext>`"""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     suffix = f".{ext.lstrip('.')}" if ext else ""
     return f"files/{user_id}/{now.year:04d}/{now.month:02d}/{file_id}{suffix}"
 

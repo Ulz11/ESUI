@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_user, require_esui
+from app.core.auth import require_esui
 from app.core.db import get_session
 from app.core.errors import not_found
 from app.models import Conversation, ConversationParticipant, Message, User, VaultDocument
@@ -225,7 +225,8 @@ async def archive_conversation_to_vault(
     )
     msgs = list(rows.scalars().all())
     if not msgs:
-        from fastapi import HTTPException, status as _status
+        from fastapi import HTTPException
+        from fastapi import status as _status
         raise HTTPException(_status.HTTP_400_BAD_REQUEST, "conversation is empty")
 
     # Render transcript as markdown

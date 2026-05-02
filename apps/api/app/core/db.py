@@ -6,7 +6,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, func
-from sqlalchemy.dialects.postgresql import UUID as PgUUID
+from sqlalchemy.dialects.postgresql import UUID as PgUUID  # noqa: N811
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,

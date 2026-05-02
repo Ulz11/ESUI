@@ -19,13 +19,14 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
+
 from app.core.db import SessionLocal
 from app.core.log import log
 from app.main import sio
 from app.models import ConversationParticipant, User
 from app.orchestrator.streaming import run_chat_turn
 from app.realtime.presence import touch_active, touch_chat
-from sqlalchemy import select
 
 
 def _room(conversation_id: UUID | str) -> str:

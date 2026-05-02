@@ -8,7 +8,8 @@ import os
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File as F, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import File as F  # noqa: N817
 from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession

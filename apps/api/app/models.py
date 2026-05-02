@@ -18,12 +18,12 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Float,
     ForeignKey,
     Integer,
     LargeBinary,
     Numeric,
     PrimaryKeyConstraint,
-    Real,
     String,
     Text,
     UniqueConstraint,
@@ -32,7 +32,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, created_ts, nullable_ts, uuid_fk, uuid_pk
-
 
 # ---------- Identity ----------
 
@@ -330,7 +329,7 @@ class VaultLink(Base):
         ForeignKey("vault_documents.id", ondelete="CASCADE"), nullable=False
     )
     kind: Mapped[str] = mapped_column(String, nullable=False)
-    strength: Mapped[float | None] = mapped_column(Real, nullable=True)
+    strength: Mapped[float | None] = mapped_column(Float, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[created_ts]
 
@@ -420,7 +419,7 @@ class ExamAttempt(Base):
     user_id: Mapped[uuid_fk] = mapped_column(
         ForeignKey("users.id"), nullable=False, index=True
     )
-    score: Mapped[float | None] = mapped_column(Real, nullable=True)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
     weak_topics: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     responses: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     duration_sec: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -606,8 +605,8 @@ class Memory(Base):
     embedding: Mapped[list[float]] = mapped_column(Vector(1024), nullable=False)
     source_kind: Mapped[str | None] = mapped_column(String, nullable=True)
     source_id: Mapped[UUID | None] = mapped_column(nullable=True)
-    salience: Mapped[float] = mapped_column(Real, nullable=False, default=1.0)
-    confidence: Mapped[float] = mapped_column(Real, nullable=False, default=1.0)
+    salience: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     forgotten: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[created_ts]
     last_used_at: Mapped[nullable_ts]

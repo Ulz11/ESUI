@@ -9,7 +9,6 @@ Also runs salience decay: salience *= 0.97 for memories not used in 24h.
 
 from __future__ import annotations
 
-from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, text
@@ -20,7 +19,6 @@ from app.core.log import log
 from app.integrations.anthropic import MODEL_IDS, get_client
 from app.integrations.voyage import embed_one
 from app.models import AICall, Memory, User
-
 
 CONSOLIDATE_SYSTEM = """You merge near-duplicate memories about a user into ONE
 canonical statement. Preserve the newest evidence; discard older phrasings.

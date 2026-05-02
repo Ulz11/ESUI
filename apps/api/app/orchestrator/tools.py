@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 PIN_TO_VAULT_TOOL = {
     "name": "pin_to_vault",
     "description": (

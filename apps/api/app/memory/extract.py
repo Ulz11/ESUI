@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import text

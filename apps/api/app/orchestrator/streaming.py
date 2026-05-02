@@ -23,7 +23,6 @@ from app.models import (
     ConversationParticipant,
     Message,
     MessageFile,
-    User,
 )
 from app.orchestrator.auto_title import maybe_auto_title
 from app.orchestrator.cost_cap import (
@@ -36,7 +35,8 @@ from app.orchestrator.dispatcher import flat_system_from_blocks, stream_via
 from app.orchestrator.intent import classify
 from app.orchestrator.modes import Mode, default_temperature, system_blocks
 from app.orchestrator.retrieval import retrieve_for_chat
-from app.orchestrator.router import Alias, select
+from app.orchestrator.router import Alias
+from app.orchestrator.router import select as route_select
 from app.orchestrator.tools import (
     CHAT_TOOLS,
     render_pin_suggestion,
@@ -116,7 +116,7 @@ async def run_chat_turn(
 
     # Route the model
     user_override: Alias | None = model_hint  # type: ignore[assignment]
-    spec = select(
+    spec = route_select(
         "chat", mode=mode, hints=hints, user_override=user_override, capped=capped,
     )
 

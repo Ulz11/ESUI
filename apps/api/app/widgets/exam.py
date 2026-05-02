@@ -339,8 +339,8 @@ async def ingest_workspace(
                 continue
             try:
                 file_uuid = UUID(fid)
-            except ValueError:
-                raise bad_request(f"bad file_id: {fid}")
+            except ValueError as e:
+                raise bad_request(f"bad file_id: {fid}") from e
             f = await session.get(File, file_uuid)
             if f is None or f.owner_id != user.id:
                 raise not_found(f"file {fid}")

@@ -11,10 +11,10 @@ import asyncio
 import hashlib
 import os
 from datetime import datetime
-from typing import Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File as F, Form, UploadFile
+from fastapi import APIRouter, Depends, Form, UploadFile
+from fastapi import File as F  # noqa: N817
 from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ from app.core.auth import current_user, require_esui
 from app.core.db import get_session
 from app.core.errors import bad_request, not_found
 from app.integrations import r2
-from app.models import File, BeautyMedia, User
+from app.models import BeautyMedia, File, User
 
 router = APIRouter(prefix="/beauty", tags=["beauty"])
 
@@ -122,8 +122,8 @@ async def list_media(
 @router.post("/media", response_model=MediaOut, status_code=201)
 async def upload_media(
     file: UploadFile = F(...),
-    caption: Optional[str] = Form(None),
-    taken_at: Optional[datetime] = Form(None),
+    caption: str | None = Form(None),
+    taken_at: datetime | None = Form(None),
     user: User = Depends(require_esui),
     session: AsyncSession = Depends(get_session),
 ) -> MediaOut:

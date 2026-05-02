@@ -23,7 +23,6 @@ from typing import Any, Literal
 from app.core.log import log
 from app.integrations.anthropic import MODEL_IDS, get_client
 
-
 PLAN_TOOL = {
     "name": "emit_plan",
     "description": "Emit 4-7 schedule SUGGESTIONS for Esui to review one at a time. These are NOT commitments — she'll accept items individually.",

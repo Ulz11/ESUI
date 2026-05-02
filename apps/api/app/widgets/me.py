@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -87,7 +87,7 @@ async def get_usage(
 ) -> UsageOut:
     today_usd = await get_today_cost(user.id)
 
-    since = datetime.now(tz=timezone.utc) - timedelta(days=range_days)
+    since = datetime.now(tz=UTC) - timedelta(days=range_days)
     rows = (await session.execute(
         select(
             AICall.task,

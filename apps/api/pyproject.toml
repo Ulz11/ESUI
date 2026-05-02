@@ -43,7 +43,19 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N"]
-ignore = ["E501"]
+ignore = [
+  "E501",   # line length — handled by formatter when we want
+  "B008",   # FastAPI relies on Depends(...) as default-arg; the rule misfires here
+  "N803",   # uppercase argument names — Pydantic / Alembic conventions
+  "N806",   # uppercase variables in function — used for constants in alembic ops
+  "N818",   # exception suffix — our errors are intentionally short
+  "UP007",  # X | None — keep readable everywhere
+]
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/**/*.py" = ["UP", "I001", "N"]
+"tests/**/*.py"       = ["B017", "F841"]
+"app/main.py"         = ["E402"]
 
 [tool.mypy]
 python_version = "3.12"

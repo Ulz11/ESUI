@@ -6,7 +6,7 @@ Unauthorized emails get a 204 silently (don't leak which addresses exist).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
@@ -22,7 +22,6 @@ from app.core.auth import (
     magic_link_expiry,
     new_random_token,
 )
-from app.core.config import settings
 from app.core.db import get_session
 from app.core.errors import bad_request, too_many
 from app.core.log import log
@@ -126,8 +125,8 @@ async def verify_magic_link(
     link = row.scalar_one_or_none()
     if link is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token")
-    now = datetime.now(tz=timezone.utc)
-    if link.expires_at.replace(tzinfo=link.expires_at.tzinfo or timezone.utc) < now:
+    now = datetime.now(tz=UTC)
+    if link.expires_at.replace(tzinfo=link.expires_at.tzinfo or UTC) < now:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "token expired")
 
     link.consumed_at = now

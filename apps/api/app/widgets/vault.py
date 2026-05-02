@@ -436,7 +436,8 @@ async def vault_graph(
     max_nodes: int = 80,
 ) -> GraphOut:
     partner = await _partner_id(session, user)
-    visible_owner = (str(user.id), str(partner) if partner else None)
+    # `visible_owner` reserved for the eventual share-aware query path.
+    visible_owner = (str(user.id), str(partner) if partner else None)  # noqa: F841
 
     # BFS from center if given; else top-N most-recently-updated docs.
     if center is not None:

@@ -10,13 +10,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import SessionLocal
 from app.core.log import log
 from app.integrations.anthropic import MODEL_IDS, get_client
 from app.models import AICall, Conversation, Message
-
 
 TITLE_TOOL = {
     "name": "emit_title",

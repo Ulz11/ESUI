@@ -9,8 +9,8 @@ Run:
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 import socketio
 from fastapi import FastAPI
@@ -63,12 +63,12 @@ sio = socketio.AsyncServer(
 # ---------- Routers ----------
 # Imported AFTER app is defined to avoid circular imports during module load.
 from app.widgets.auth import router as auth_router  # noqa: E402
+from app.widgets.beauty import router as beauty_router  # noqa: E402
 from app.widgets.chat import router as chat_router  # noqa: E402
 from app.widgets.exam import router as exam_router  # noqa: E402
 from app.widgets.files import router as files_router  # noqa: E402
 from app.widgets.me import router as me_router  # noqa: E402
 from app.widgets.memory import router as memory_router  # noqa: E402
-from app.widgets.beauty import router as beauty_router  # noqa: E402
 from app.widgets.signals import router as signals_router  # noqa: E402
 from app.widgets.tasks import router as tasks_router  # noqa: E402
 from app.widgets.vault import router as vault_router  # noqa: E402
@@ -88,7 +88,6 @@ app.include_router(tasks_router, prefix="/api/v1")
 # ---------- Realtime handlers ----------
 # Importing the module registers @sio.event handlers via decorators.
 import app.realtime.server  # noqa: E402, F401
-
 
 # ---------- Combined ASGI ----------
 asgi = socketio.ASGIApp(sio, other_asgi_app=app)

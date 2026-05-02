@@ -4,10 +4,10 @@ Pydantic-settings reads from `.env` first, then process env. Production
 secrets are injected via Fly.io secrets / Vercel env.
 """
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -21,7 +21,9 @@ class Settings(BaseSettings):
     # core
     app_env: Literal["development", "staging", "production"] = "development"
     secret_key: str = "dev-secret-change-me-in-prod-min-32-chars"
-    allowed_origins: list[str] = ["http://localhost:3000"]
+    # NoDecode disables pydantic-settings's default JSON decode for list fields,
+    # so the validator below is the only parser. Accepts CSV or JSON arrays.
+    allowed_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
 
     # allowlist (only these emails can sign in)
     esui_email: str = ""
@@ -71,11 +73,13 @@ class Settings(BaseSettings):
     @field_validator("allowed_origins", mode="before")
     @classmethod
     def _split_origins(cls, v: Any) -> Any:
-        """Accept env input as JSON array OR comma-separated string."""
+        """Accept input as JSON array OR comma-separated string OR list."""
         if isinstance(v, str):
             s = v.strip()
             if s.startswith("["):
-                return v  # let pydantic parse JSON
+                # JSON array string — parse it ourselves (NoDecode disabled the auto path).
+                import json
+                return json.loads(s)
             return [item.strip() for item in s.split(",") if item.strip()]
         return v
 

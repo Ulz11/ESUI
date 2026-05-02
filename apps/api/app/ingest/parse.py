@@ -14,9 +14,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy import insert
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.db import SessionLocal
 from app.core.log import log
 from app.ingest.chunk import chunk_blocks
