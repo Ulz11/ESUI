@@ -1,43 +1,71 @@
 "use client";
 
-import React, { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Avatar, Cursor, Empty, GhostBtn, ModePill, ProviderChip, Rule, SectionTitle, Skel, Surface, Tag, useNow } from "./atoms";
+import React, { useEffect, useState } from "react";
+import { Empty, Skel, Tag } from "./atoms";
 import { I } from "./icons";
+import { api } from "@/lib/api";
+import { useMe, useMemories, useUsage } from "@/lib/v3-hooks";
 
-// Settings drawer — focus on Memory audit
+// Settings drawer — wired to /me, /me/usage, /memory.
 
 function SettingsDrawer({ open, onClose }) {
   const [section, setSection] = useState("memory");
   if (!open) return null;
   return (
-    <div className="fi" style={{ position:"fixed", inset:0, background:"rgba(13,15,23,.32)", zIndex:55 }} onClick={onClose}>
-      <div className="fu" onClick={e => e.stopPropagation()} style={{
-        position:"absolute", right:0, top:0, bottom:0, width:"min(720px, 92vw)",
-        background:"var(--paper)", borderLeft:"1px solid var(--rule)",
-        display:"grid", gridTemplateColumns:"180px 1fr", overflow:"hidden",
-      }}>
-        <div style={{ borderRight:"1px solid var(--rule)", padding:"32px 18px" }}>
-          <div className="mono" style={{ fontSize:11, letterSpacing:".18em", textTransform:"uppercase", color:"var(--ink-35)" }}>settings</div>
-          <div style={{ marginTop:18, display:"flex", flexDirection:"column", gap:2 }}>
+    <div
+      className="fi"
+      style={{ position: "fixed", inset: 0, background: "rgba(13,15,23,.32)", zIndex: 55 }}
+      onClick={onClose}
+    >
+      <div
+        className="fu"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: "min(720px, 92vw)",
+          background: "var(--paper)",
+          borderLeft: "1px solid var(--rule)",
+          display: "grid",
+          gridTemplateColumns: "180px 1fr",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ borderRight: "1px solid var(--rule)", padding: "32px 18px" }}>
+          <div className="mono" style={{ fontSize: 11, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink-35)" }}>
+            settings
+          </div>
+          <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 2 }}>
             {[
-              ["profile","profile"],
-              ["memory","memory"],
-              ["usage","usage"],
-              ["theme","theme"],
+              ["profile", "profile"],
+              ["memory", "memory"],
+              ["usage", "usage"],
+              ["theme", "theme"],
             ].map(([k, l]) => (
-              <button key={k} onClick={() => setSection(k)} style={{
-                textAlign:"left", padding:"8px 10px", borderRadius:6,
-                background: section === k ? "var(--ink-06)" : "transparent",
-                color: section === k ? "var(--ink)" : "var(--ink-50)", fontSize:13.5,
-              }}>{l}</button>
+              <button
+                key={k}
+                onClick={() => setSection(k)}
+                style={{
+                  textAlign: "left",
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  background: section === k ? "var(--ink-06)" : "transparent",
+                  color: section === k ? "var(--ink)" : "var(--ink-50)",
+                  fontSize: 13.5,
+                }}
+              >
+                {l}
+              </button>
             ))}
           </div>
         </div>
-        <div style={{ overflow:"auto", padding:"36px 36px" }}>
-          {section === "memory" && <MemoryAudit/>}
-          {section === "profile" && <ProfilePanel/>}
-          {section === "usage"  && <UsagePanel/>}
-          {section === "theme"  && <ThemePanel/>}
+        <div style={{ overflow: "auto", padding: "36px 36px" }}>
+          {section === "memory" && <MemoryAudit />}
+          {section === "profile" && <ProfilePanel />}
+          {section === "usage" && <UsagePanel />}
+          {section === "theme" && <ThemePanel />}
         </div>
       </div>
     </div>
@@ -45,79 +73,191 @@ function SettingsDrawer({ open, onClose }) {
 }
 
 function MemoryAudit() {
+  const { items, reload } = useMemories();
+  const [filter, setFilter] = useState("");
+  const visible = items.filter((m) => !filter || m.text.toLowerCase().includes(filter.toLowerCase()));
+
+  const onForget = async (id) => {
+    try {
+      await api.post(`/api/v1/memory/${id}/forget`);
+      reload();
+    } catch {}
+  };
+
   return (
     <div>
-      <div style={{ fontFamily:"var(--serif)", fontSize:26 }}><em>memory</em></div>
-      <div style={{ fontFamily:"var(--serif)", fontSize:15, color:"var(--ink-50)", marginTop:6, fontStyle:"italic" }}>
+      <div style={{ fontFamily: "var(--serif)", fontSize: 26 }}>
+        <em>memory</em>
+      </div>
+      <div
+        style={{
+          fontFamily: "var(--serif)",
+          fontSize: 15,
+          color: "var(--ink-50)",
+          marginTop: 6,
+          fontStyle: "italic",
+        }}
+      >
         what the AI has come to know about her. all of it editable, all of it forgettable.
       </div>
-      <div style={{ marginTop:24, display:"flex", alignItems:"center", gap:8, padding:"8px 12px", border:"1px solid var(--rule)", borderRadius:100 }}>
-        <I.search size={13}/><span style={{ fontFamily:"var(--serif)", fontStyle:"italic", color:"var(--ink-50)", fontSize:14 }}>search memories…</span>
+      <div
+        style={{
+          marginTop: 24,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 12px",
+          border: "1px solid var(--rule)",
+          borderRadius: 100,
+        }}
+      >
+        <I.search size={13} />
+        <input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="search memories…"
+          style={{
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            fontFamily: "var(--serif)",
+            fontStyle: filter ? "normal" : "italic",
+            color: "var(--ink-70)",
+            fontSize: 14,
+            flex: 1,
+          }}
+        />
       </div>
-      <div style={{ marginTop:22 }}>
-        {MEMS.map((m, i) => (
-          <div key={i} style={{ padding:"14px 0", borderTop:"1px solid var(--rule-soft)", display:"grid", gridTemplateColumns:"1fr auto auto", gap:14, alignItems:"baseline" }}>
-            <div>
-              <div style={{ fontFamily:"var(--serif)", fontSize:15.5, color:"var(--ink)" }}>{m.text}</div>
-              <div style={{ display:"flex", gap:8, marginTop:6, alignItems:"center" }}>
-                <Tag>{m.cat}</Tag>
-                <span className="mono" style={{ fontSize:11, color:"var(--ink-35)" }}>{m.src} · used {m.ago}</span>
+      <div style={{ marginTop: 22 }}>
+        {visible.length === 0 ? (
+          <Empty>nothing remembered yet — talk a little, the AI will catch on.</Empty>
+        ) : (
+          visible.map((m) => (
+            <div
+              key={m.id}
+              style={{
+                padding: "14px 0",
+                borderTop: "1px solid var(--rule-soft)",
+                display: "grid",
+                gridTemplateColumns: "1fr auto auto",
+                gap: 14,
+                alignItems: "baseline",
+              }}
+            >
+              <div>
+                <div style={{ fontFamily: "var(--serif)", fontSize: 15.5, color: "var(--ink)" }}>{m.text}</div>
+                <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
+                  {m.category && <Tag>{m.category}</Tag>}
+                  <span className="mono" style={{ fontSize: 11, color: "var(--ink-35)" }}>
+                    {m.source_kind || "—"} · {m.last_used_at ? `used ${timeAgo(m.last_used_at)}` : "unused"}
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 2 }}>
+                {Array.from({ length: 3 }).map((_, di) => (
+                  <span
+                    key={di}
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      background: di < Math.round((m.salience || 0) * 3) ? "var(--ink-50)" : "var(--ink-10)",
+                    }}
+                  />
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button className="qbtn" onClick={() => onForget(m.id)}>
+                  forget
+                </button>
               </div>
             </div>
-            <div style={{ display:"flex", gap:2 }}>
-              {Array.from({length:3}).map((_, di) => (
-                <span key={di} style={{ width:6, height:6, borderRadius:3, background: di < m.salience ? "var(--ink-50)" : "var(--ink-10)" }}/>
-              ))}
-            </div>
-            <div style={{ display:"flex", gap:4 }}>
-              <button className="qbtn">edit</button>
-              <button className="qbtn">forget</button>
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
 }
 
 function ProfilePanel() {
+  const { user } = useMe();
   return (
     <div>
-      <div style={{ fontFamily:"var(--serif)", fontSize:26 }}><em>profile</em></div>
-      <div style={{ marginTop:24, display:"flex", flexDirection:"column", gap:18 }}>
-        {[
-          ["display name", "Esui"],
-          ["timezone", "America/Los_Angeles"],
-          ["default mode", "Ulzii"],
-        ].map(([k, v]) => (
-          <div key={k} style={{ display:"grid", gridTemplateColumns:"160px 1fr", borderTop:"1px solid var(--rule-soft)", paddingTop:14 }}>
-            <div className="mono" style={{ fontSize:11, letterSpacing:".1em", textTransform:"uppercase", color:"var(--ink-50)" }}>{k}</div>
-            <div style={{ fontFamily:"var(--serif)", fontSize:16 }}>{v}</div>
-          </div>
-        ))}
+      <div style={{ fontFamily: "var(--serif)", fontSize: 26 }}>
+        <em>profile</em>
+      </div>
+      <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 18 }}>
+        {user ? (
+          [
+            ["display name", user.display_name],
+            ["email", user.email],
+            ["timezone", user.timezone],
+            ["default mode", user.default_mode],
+          ].map(([k, v]) => (
+            <div
+              key={k}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "160px 1fr",
+                borderTop: "1px solid var(--rule-soft)",
+                paddingTop: 14,
+              }}
+            >
+              <div
+                className="mono"
+                style={{
+                  fontSize: 11,
+                  letterSpacing: ".1em",
+                  textTransform: "uppercase",
+                  color: "var(--ink-50)",
+                }}
+              >
+                {k}
+              </div>
+              <div style={{ fontFamily: "var(--serif)", fontSize: 16 }}>{v || "—"}</div>
+            </div>
+          ))
+        ) : (
+          <Skel w="60%" />
+        )}
       </div>
     </div>
   );
 }
 
 function UsagePanel() {
+  const u = useUsage(30);
   return (
     <div>
-      <div style={{ fontFamily:"var(--serif)", fontSize:26 }}><em>usage</em></div>
-      <div style={{ marginTop:24, padding:"22px 24px", border:"1px solid var(--rule)", borderRadius:"var(--r-md)" }}>
-        <div className="mono" style={{ fontSize:11, letterSpacing:".14em", textTransform:"uppercase", color:"var(--ink-50)" }}>today</div>
-        <div className="tnum" style={{ fontFamily:"var(--serif)", fontSize:34, marginTop:6 }}>$2.48</div>
-        <div className="mono" style={{ fontSize:11, color:"var(--ink-35)", marginTop:4 }}>of $10.00 daily cap</div>
+      <div style={{ fontFamily: "var(--serif)", fontSize: 26 }}>
+        <em>usage</em>
       </div>
-      <div style={{ marginTop:18 }}>
-        {[
-          ["chat · opus", "$1.62"],
-          ["chat · sonnet", "$0.34"],
-          ["planner · opus", "$0.42"],
-          ["embeddings", "$0.10"],
-        ].map(([k, v]) => (
-          <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"12px 0", borderTop:"1px solid var(--rule-soft)" }}>
-            <span>{k}</span><span className="mono tnum" style={{ color:"var(--ink-50)" }}>{v}</span>
+      <div style={{ marginTop: 24, padding: "22px 24px", border: "1px solid var(--rule)", borderRadius: "var(--r-md)" }}>
+        <div className="mono" style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-50)" }}>
+          today
+        </div>
+        <div className="tnum" style={{ fontFamily: "var(--serif)", fontSize: 34, marginTop: 6 }}>
+          {u ? `$${u.today_usd?.toFixed(2)}` : "—"}
+        </div>
+        <div className="mono" style={{ fontSize: 11, color: "var(--ink-35)", marginTop: 4 }}>
+          of ${u?.daily_cap_usd?.toFixed(2) || "20.00"} daily cap
+        </div>
+      </div>
+      <div style={{ marginTop: 18 }}>
+        {(u?.by_task || []).map((row) => (
+          <div
+            key={row.task}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "12px 0",
+              borderTop: "1px solid var(--rule-soft)",
+            }}
+          >
+            <span>{row.task}</span>
+            <span className="mono tnum" style={{ color: "var(--ink-50)" }}>
+              ${row.cost_usd?.toFixed(2)}
+            </span>
           </div>
         ))}
       </div>
@@ -128,26 +268,25 @@ function UsagePanel() {
 function ThemePanel() {
   return (
     <div>
-      <div style={{ fontFamily:"var(--serif)", fontSize:26 }}><em>theme</em></div>
-      <div style={{ marginTop:24, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14 }}>
-        {[["light","selected"],["dark",""],["system",""]].map(([k, s]) => (
-          <button key={k} style={{ padding:"22px 18px", border: s ? "1px solid var(--ink)" : "1px solid var(--rule)", borderRadius:"var(--r-md)", textAlign:"left" }}>
-            <div className="mono" style={{ fontSize:11, letterSpacing:".14em", textTransform:"uppercase", color:"var(--ink-50)" }}>{k}</div>
-            <div style={{ fontFamily:"var(--serif)", fontSize:18, marginTop:4 }}>{s ? "selected" : "—"}</div>
-          </button>
-        ))}
+      <div style={{ fontFamily: "var(--serif)", fontSize: 26 }}>
+        <em>theme</em>
+      </div>
+      <div style={{ marginTop: 24, fontFamily: "var(--serif)", fontStyle: "italic", color: "var(--ink-50)" }}>
+        toggle in the topbar.
       </div>
     </div>
   );
 }
 
-const MEMS = [
-  { text:"reads philosophy in english and arabic; prefers original-language quotes when feasible.", cat:"preferences", src:"from chat", ago:"2 hours ago", salience:3 },
-  { text:"writes morning pages by hand on tuesdays; do not pester before 9am tuesday.", cat:"schedule", src:"manual", ago:"3 days ago", salience:3 },
-  { text:"prefers tradeoffs over recommendations; when forced to recommend, asks for the second-best option.", cat:"working style", src:"from chat", ago:"yesterday", salience:2 },
-  { text:"climbs at planet granite tuesdays and thursdays. evenings.", cat:"schedule", src:"from chat", ago:"a week ago", salience:2 },
-  { text:"uses italic for the load-bearing word of a sentence.", cat:"writing style", src:"from chat", ago:"5 days ago", salience:1 },
-  { text:"badrushk's nickname is obama, but only she may use it.", cat:"context", src:"manual", ago:"a month ago", salience:3 },
-];
+function timeAgo(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const sec = (Date.now() - d.getTime()) / 1000;
+  if (sec < 60) return "just now";
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+  if (sec < 2592000) return `${Math.floor(sec / 86400)}d ago`;
+  return d.toLocaleDateString();
+}
 
 export { SettingsDrawer };
