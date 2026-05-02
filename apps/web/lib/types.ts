@@ -141,7 +141,47 @@ export type ExamArtifactKind =
   | "practice_set"
   | "concept_map"
   | "knowledge_graph"
-  | "simulation";
+  | "simulation"
+  | "summary"
+  | "flashcard_deck";
+
+// Drop-to-files / paste flow.
+export type ExamIngestRequest = {
+  text?: string;
+  file_ids?: string[];
+  mode?: Mode;
+  title_hint?: string;
+  n_cards?: number;
+};
+
+export type ExamIngestResponse = {
+  summary_artifact_id: string;
+  flashcard_artifact_id: string;
+};
+
+// One flashcard inside a flashcard_deck artifact's payload.cards[].
+export type Flashcard = {
+  front: string;
+  back: string;
+  topic: string;
+  difficulty?: number;
+};
+
+// Per-card scheduler state. Mirrors the TOK card.html RNN.
+export type FlashcardReviewState = {
+  h: number;
+  last_review: string | null;
+  reviews: number;
+  streak: number;
+};
+
+export type FlashcardReviewResponse = {
+  card_idx: number;
+  h: number;
+  reviews: number;
+  streak: number;
+  last_review: string;
+};
 
 export type ExamArtifact = {
   id: string;

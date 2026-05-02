@@ -100,24 +100,32 @@ function CalendarView({ mode }) {
               gap: 8,
             }}
           >
-            <I.sparkle size={13} /> plan with ai
+            <I.sparkle size={13} /> ask for suggestions
           </button>
         </div>
       </div>
-      {view === "week" && <WeekGrid tasks={tasks} anchor={anchor} reload={reload} />}
-      {view === "month" && <MonthGrid tasks={tasks} anchor={anchor} />}
-      {view === "day" && <DayGrid tasks={tasks} anchor={anchor} reload={reload} />}
-      {planning && (
-        <PlannerModal
-          mode={mode}
-          anchor={anchor}
-          onClose={() => setPlanning(false)}
-          onAccepted={() => {
-            setPlanning(false);
-            reload();
+      <div style={{ position: "relative", overflow: "hidden" }}>
+        <div
+          style={{
+            height: "100%",
+            paddingRight: planning ? "min(420px, 50vw)" : 0,
+            transition: "padding-right .25s cubic-bezier(.16,1,.3,1)",
+            overflow: "hidden",
           }}
-        />
-      )}
+        >
+          {view === "week" && <WeekGrid tasks={tasks} anchor={anchor} reload={reload} />}
+          {view === "month" && <MonthGrid tasks={tasks} anchor={anchor} />}
+          {view === "day" && <DayGrid tasks={tasks} anchor={anchor} reload={reload} />}
+        </div>
+        {planning && (
+          <SuggestionsPanel
+            mode={mode}
+            anchor={anchor}
+            onClose={() => setPlanning(false)}
+            onAdded={() => reload()}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -438,381 +446,446 @@ function DayGrid({ tasks, anchor, reload }) {
 
 // ─── AI planner ─────────────────────────────────────────────────────────────
 
-function PlannerModal({ mode, anchor, onClose, onAccepted }) {
-  const [stage, setStage] = useState("input"); // input -> loading -> review
-  const [intent, setIntent] = useState(
-    "a deep work day. carve real time for the proof writeup, finish the planner UX, and leave room for reading.",
-  );
-  const [plan, setPlan] = useState(null);
-  const [error, setError] = useState(null);
-  const [items, setItems] = useState([]);
+// ─── Suggestions panel — semi-suggestion mode ───────────────────────────────
+//
+// Calendar stays visible underneath; the panel is a docked drawer on the
+// right. Each suggestion is its own card with [Add] / [Edit] / [Skip] —
+// Esui chooses what to add. Nothing lands on her calendar without an
+// explicit per-item click.
 
-  const onPlan = async () => {
+function SuggestionsPanel({ mode, anchor, onClose, onAdded }) {
+  const [stage, setStage] = useState("input"); // input -> loading -> review
+  const [intent, setIntent] = useState("");
+  const [plan, setPlan] = useState(null);
+  const [items, setItems] = useState([]);
+  const [error, setError] = useState(null);
+  const [addedIdx, setAddedIdx] = useState(() => new Set());
+  const [skippedIdx, setSkippedIdx] = useState(() => new Set());
+  const [editingIdx, setEditingIdx] = useState(null);
+
+  const onAsk = async () => {
     setStage("loading");
     setError(null);
-    const dayStart = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 8, 0, 0);
-    const dayEnd = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 22, 0, 0);
+    // Plan against the current week's working hours by default.
+    const wkStart = startOfWeek(anchor);
+    const dayStart = new Date(wkStart.getFullYear(), wkStart.getMonth(), wkStart.getDate(), 8, 0, 0);
+    const dayEnd = addDays(dayStart, 7);
+    dayEnd.setHours(22, 0, 0, 0);
     try {
       const resp = await tasksApi.plan({
-        intent,
+        intent: intent.trim() || "Look at my upcoming tasks and suggest a balanced week.",
         date_from: dayStart.toISOString(),
         date_to: dayEnd.toISOString(),
         mode,
       });
       setPlan(resp);
       setItems(resp.items || []);
+      setAddedIdx(new Set());
+      setSkippedIdx(new Set());
       setStage("review");
     } catch (e) {
-      setError(e?.message || "failed to plan");
+      setError(e?.message || "failed to think it through");
       setStage("input");
     }
   };
 
-  const onAccept = async () => {
-    if (items.length === 0) {
-      onAccepted();
-      return;
-    }
+  const addOne = async (i) => {
+    const p = items[i];
     try {
-      await tasksApi.bulk(
-        items.map((p) => ({
-          kind: p.kind,
-          title: p.title,
-          description: p.description ?? null,
-          starts_at: p.starts_at ?? null,
-          ends_at: p.ends_at ?? null,
-          all_day: p.all_day ?? false,
-          color: p.color ?? null,
-        })),
-      );
-      onAccepted();
+      await tasksApi.create({
+        kind: p.kind,
+        title: p.title,
+        description: p.description ?? null,
+        starts_at: p.starts_at ?? null,
+        ends_at: p.ends_at ?? null,
+        all_day: p.all_day ?? false,
+        color: p.color ?? null,
+      });
+      setAddedIdx((prev) => new Set(prev).add(i));
+      onAdded?.();
     } catch {
-      setError("could not save — try again");
+      setError("couldn't add — try again");
     }
   };
+
+  const skipOne = (i) => setSkippedIdx((prev) => new Set(prev).add(i));
+
+  const editTimes = (i, patch) => {
+    setItems((arr) => arr.map((it, j) => (j === i ? { ...it, ...patch } : it)));
+  };
+
+  const visibleItems = items
+    .map((it, i) => ({ it, i }))
+    .filter(({ i }) => !skippedIdx.has(i) && !addedIdx.has(i));
+  const totalToReview = items.length;
+  const reviewedCount = addedIdx.size + skippedIdx.size;
 
   return (
     <div
       className="fi"
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(13,15,23,.32)",
-        backdropFilter: "blur(2px)",
-        zIndex: 50,
+        position: "absolute",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: "min(420px, 100%)",
+        background: "var(--surface)",
+        borderLeft: "1px solid var(--rule)",
+        boxShadow: "-12px 0 32px -20px rgba(13,15,23,.18)",
         display: "grid",
-        placeItems: "center",
-        padding: 32,
+        gridTemplateRows: "auto 1fr auto",
+        zIndex: 30,
       }}
     >
       <div
-        className="fu"
         style={{
-          width: "min(820px, 100%)",
-          maxHeight: "90vh",
-          background: "var(--surface)",
-          borderRadius: "var(--r-lg)",
-          border: "1px solid var(--rule)",
-          boxShadow: "0 30px 80px -20px rgba(13,15,23,.35)",
-          overflow: "hidden",
-          display: "grid",
-          gridTemplateRows: "auto 1fr auto",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "16px 20px",
+          borderBottom: "1px solid var(--rule-soft)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "18px 22px",
-            borderBottom: "1px solid var(--rule-soft)",
-          }}
-        >
-          <div style={{ fontFamily: "var(--serif)", fontSize: 19 }}>
-            <em>plan with ai</em>
+        <div>
+          <div
+            className="mono"
+            style={{
+              fontSize: 10.5,
+              letterSpacing: ".18em",
+              textTransform: "uppercase",
+              color: "var(--ink-35)",
+            }}
+          >
+            ai · suggestions
           </div>
-          <button onClick={onClose} className="qbtn">
-            <I.close size={14} />
-          </button>
+          <div style={{ fontFamily: "var(--serif)", fontSize: 17, marginTop: 2 }}>
+            <em>{stage === "review" ? "review one at a time" : "what's the week shape?"}</em>
+          </div>
         </div>
+        <button onClick={onClose} className="qbtn">
+          <I.close size={14} />
+        </button>
+      </div>
 
+      <div style={{ overflow: "auto", padding: "16px 20px" }}>
         {stage === "input" && (
-          <div style={{ padding: "24px 28px", overflow: "auto" }}>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: ".14em",
-                textTransform: "uppercase",
-                color: "var(--ink-50)",
-                marginBottom: 8,
-              }}
-            >
-              what would you like to plan?
-            </div>
+          <>
             <textarea
               value={intent}
               onChange={(e) => setIntent(e.target.value)}
-              rows={4}
+              rows={5}
               autoFocus
+              placeholder="e.g. need real time for proof writeup, two reading blocks, climbing twice."
               style={{
                 width: "100%",
-                padding: "14px 16px",
+                padding: "12px 14px",
                 border: "1px solid var(--rule)",
                 borderRadius: "var(--r-md)",
                 fontFamily: "var(--serif)",
-                fontSize: 16,
+                fontSize: 15,
                 lineHeight: 1.5,
+                background: "var(--paper)",
+                resize: "vertical",
               }}
             />
-            <div style={{ display: "flex", gap: 24, marginTop: 18, alignItems: "center" }}>
-              <div>
-                <div
-                  className="mono"
-                  style={{
-                    fontSize: 10,
-                    letterSpacing: ".14em",
-                    textTransform: "uppercase",
-                    color: "var(--ink-50)",
-                    marginBottom: 6,
-                  }}
-                >
-                  range
-                </div>
-                <div style={{ fontFamily: "var(--serif)", fontSize: 15 }}>
-                  <em>{prettyDate(anchor)}</em>
-                </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
+              <div className="mono" style={{ fontSize: 11, letterSpacing: ".06em", color: "var(--ink-50)" }}>
+                {prettyDate(startOfWeek(anchor))} — week
               </div>
-              <div style={{ flex: 1 }} />
-              <div>
-                <div
-                  className="mono"
-                  style={{
-                    fontSize: 10,
-                    letterSpacing: ".14em",
-                    textTransform: "uppercase",
-                    color: "var(--ink-50)",
-                    marginBottom: 6,
-                  }}
-                >
-                  posture
-                </div>
-                <ModePill mode={mode} />
-              </div>
+              <ModePill mode={mode} size="xs" />
+            </div>
+            <div style={{ marginTop: 16, fontFamily: "var(--serif)", fontStyle: "italic", color: "var(--ink-50)", fontSize: 13.5, lineHeight: 1.55 }}>
+              I'll suggest items one at a time. Add the ones you want, skip the rest. Nothing lands on your calendar without your tap.
             </div>
             {error && (
-              <div style={{ marginTop: 14, color: "var(--rose)", fontSize: 13, fontStyle: "italic" }}>
+              <div style={{ marginTop: 12, color: "var(--rose)", fontSize: 13, fontStyle: "italic" }}>
                 {error}
               </div>
             )}
-          </div>
+          </>
         )}
 
         {stage === "loading" && (
-          <div style={{ padding: "60px 28px", textAlign: "center", display: "grid", gap: 18, justifyItems: "center" }}>
+          <div style={{ padding: "40px 0", textAlign: "center", display: "grid", gap: 16, justifyItems: "center" }}>
             <div
               style={{
-                width: 46,
-                height: 46,
-                borderRadius: 23,
+                width: 36,
+                height: 36,
+                borderRadius: 18,
                 border: `1.5px solid ${mode === "ulzii" ? "var(--sky)" : "var(--forest)"}`,
                 animation: "pulse 2.2s ease-in-out infinite",
               }}
             />
-            <div
-              style={{
-                fontFamily: "var(--serif)",
-                fontSize: 18,
-                fontStyle: "italic",
-                color: "var(--ink-70)",
-                maxWidth: 460,
-              }}
-            >
-              opus is reading your vault, calendar, and recent memory…
+            <div style={{ fontFamily: "var(--serif)", fontStyle: "italic", color: "var(--ink-70)", fontSize: 14, maxWidth: 320 }}>
+              reading your calendar, vault, and recent memory…
             </div>
           </div>
         )}
 
         {stage === "review" && plan && (
-          <div style={{ padding: "22px 28px", overflow: "auto" }}>
+          <>
             {plan.summary && (
               <div
                 style={{
                   fontFamily: "var(--serif)",
-                  fontSize: 17,
+                  fontSize: 14.5,
                   lineHeight: 1.55,
                   color: "var(--ink-70)",
                   borderLeft: "2px solid var(--rule)",
-                  paddingLeft: 14,
+                  paddingLeft: 12,
                   fontStyle: "italic",
+                  marginBottom: 18,
                 }}
               >
                 {plan.summary}
               </div>
             )}
-
             {plan.open_questions?.length > 0 && (
-              <>
-                <div
-                  className="mono"
-                  style={{
-                    fontSize: 10,
-                    letterSpacing: ".14em",
-                    textTransform: "uppercase",
-                    color: "var(--ink-50)",
-                    marginTop: 24,
-                    marginBottom: 10,
-                  }}
-                >
+              <div style={{ marginBottom: 18 }}>
+                <div className="mono" style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-50)", marginBottom: 8 }}>
                   open question{plan.open_questions.length > 1 ? "s" : ""}
                 </div>
                 {plan.open_questions.map((q, i) => (
                   <div
                     key={i}
                     style={{
-                      padding: "12px 14px",
+                      padding: "10px 12px",
                       background: "#f5e9c8",
-                      borderRadius: 8,
+                      borderRadius: 6,
                       fontFamily: "var(--serif)",
                       fontStyle: "italic",
                       color: "var(--ink-70)",
-                      fontSize: 14,
-                      marginBottom: 8,
+                      fontSize: 13,
+                      marginBottom: 6,
                     }}
                   >
                     {q}
                   </div>
                 ))}
-              </>
+              </div>
             )}
 
             <div
               className="mono"
-              style={{
-                fontSize: 10,
-                letterSpacing: ".14em",
-                textTransform: "uppercase",
-                color: "var(--ink-50)",
-                marginTop: 24,
-                marginBottom: 10,
-              }}
+              style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-50)", marginBottom: 10 }}
             >
-              proposed · {items.length} items
+              {visibleItems.length === 0
+                ? totalToReview === 0
+                  ? "no items"
+                  : `done · ${addedIdx.size} added · ${skippedIdx.size} skipped`
+                : `${reviewedCount} of ${totalToReview} reviewed`}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {items.map((p, i) => (
-                <div
+
+            {visibleItems.length === 0 && totalToReview > 0 && (
+              <div style={{ fontFamily: "var(--serif)", fontStyle: "italic", color: "var(--ink-50)", fontSize: 14 }}>
+                nothing more to review. close this panel or ask for a fresh take.
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {visibleItems.map(({ it: p, i }) => (
+                <SuggestionCard
                   key={i}
-                  style={{
-                    padding: "12px 14px",
-                    border: "1px solid var(--rule)",
-                    borderRadius: "var(--r-md)",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        background: p.color || "var(--ink-50)",
-                      }}
-                    />
-                    <span style={{ fontFamily: "var(--serif)", fontSize: 15.5 }}>{p.title}</span>
-                    <span
-                      className="tnum mono"
-                      style={{ fontSize: 11, color: "var(--ink-50)", marginLeft: "auto" }}
-                    >
-                      {fmtRange(p.starts_at, p.ends_at)}
-                    </span>
-                    <button
-                      className="qbtn"
-                      title="remove"
-                      onClick={() => setItems(items.filter((_, j) => j !== i))}
-                    >
-                      <I.close size={12} />
-                    </button>
-                  </div>
-                  {p.rationale && (
-                    <div
-                      style={{
-                        marginLeft: 18,
-                        fontFamily: "var(--serif)",
-                        fontStyle: "italic",
-                        color: "var(--ink-50)",
-                        fontSize: 13.5,
-                        marginTop: 4,
-                      }}
-                    >
-                      {p.rationale}
-                    </div>
-                  )}
-                </div>
+                  item={p}
+                  editing={editingIdx === i}
+                  onEdit={() => setEditingIdx(editingIdx === i ? null : i)}
+                  onPatch={(patch) => editTimes(i, patch)}
+                  onAdd={() => addOne(i)}
+                  onSkip={() => skipOne(i)}
+                />
               ))}
             </div>
             {error && (
-              <div style={{ marginTop: 14, color: "var(--rose)", fontSize: 13, fontStyle: "italic" }}>
+              <div style={{ marginTop: 12, color: "var(--rose)", fontSize: 13, fontStyle: "italic" }}>
                 {error}
               </div>
             )}
-          </div>
+          </>
         )}
+      </div>
 
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-            padding: "14px 22px",
-            borderTop: "1px solid var(--rule-soft)",
-          }}
-        >
-          {stage === "input" && (
-            <>
-              <button onClick={onClose} className="qbtn">
-                not now
-              </button>
-              <button
-                onClick={onPlan}
-                disabled={!intent.trim()}
-                style={{
-                  padding: "8px 16px",
-                  background: "var(--ink)",
-                  color: "var(--paper)",
-                  borderRadius: 100,
-                  fontSize: 13,
-                  opacity: intent.trim() ? 1 : 0.5,
-                }}
-              >
-                think it through
-              </button>
-            </>
-          )}
-          {stage === "review" && (
-            <>
-              <button onClick={onClose} className="qbtn">
-                discard
-              </button>
-              <button onClick={() => setStage("input")} className="qbtn">
-                edit
-              </button>
-              <button
-                onClick={onAccept}
-                style={{
-                  padding: "8px 16px",
-                  background: "var(--ink)",
-                  color: "var(--paper)",
-                  borderRadius: 100,
-                  fontSize: 13,
-                }}
-              >
-                accept all
-              </button>
-            </>
-          )}
-        </div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 8,
+          padding: "12px 20px",
+          borderTop: "1px solid var(--rule-soft)",
+          background: "var(--surface)",
+        }}
+      >
+        {stage === "input" && (
+          <button
+            onClick={onAsk}
+            disabled={false}
+            style={{
+              padding: "8px 16px",
+              background: "var(--ink)",
+              color: "var(--paper)",
+              borderRadius: 100,
+              fontSize: 13,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <I.sparkle size={12} /> think it through
+          </button>
+        )}
+        {stage === "review" && (
+          <>
+            <button onClick={() => setStage("input")} className="qbtn">
+              ask again
+            </button>
+            <button onClick={onClose} className="qbtn">
+              done
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
+}
+
+function SuggestionCard({ item: p, editing, onEdit, onPatch, onAdd, onSkip }) {
+  const [hmStart, setHmStart] = useState(() => isoToHM(p.starts_at));
+  const [hmEnd, setHmEnd] = useState(() => isoToHM(p.ends_at));
+  const [day, setDay] = useState(() => isoToDate(p.starts_at) || "");
+
+  useEffect(() => {
+    setHmStart(isoToHM(p.starts_at));
+    setHmEnd(isoToHM(p.ends_at));
+    setDay(isoToDate(p.starts_at) || "");
+  }, [p.starts_at, p.ends_at]);
+
+  const apply = () => {
+    const next = patchItemTimes(p, day, hmStart, hmEnd);
+    onPatch(next);
+    onEdit();
+  };
+
+  return (
+    <div
+      style={{
+        padding: "12px 14px",
+        border: "1px solid var(--rule)",
+        borderRadius: "var(--r-md)",
+        background: "var(--paper)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 4, background: p.color || "var(--ink-50)" }} />
+        <span style={{ fontFamily: "var(--serif)", fontSize: 15 }}>{p.title}</span>
+        <span className="tnum mono" style={{ fontSize: 11, color: "var(--ink-50)", marginLeft: "auto" }}>
+          {fmtRange(p.starts_at, p.ends_at)}
+        </span>
+      </div>
+      {p.rationale && (
+        <div
+          style={{
+            marginLeft: 18,
+            fontFamily: "var(--serif)",
+            fontStyle: "italic",
+            color: "var(--ink-50)",
+            fontSize: 13,
+            marginTop: 4,
+            lineHeight: 1.45,
+          }}
+        >
+          {p.rationale}
+        </div>
+      )}
+      {editing && (
+        <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--ink-06)", borderRadius: 6, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          <label style={{ fontSize: 11, color: "var(--ink-50)" }}>
+            day
+            <input type="date" value={day} onChange={(e) => setDay(e.target.value)} style={inputStyle} />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--ink-50)" }}>
+            start
+            <input type="time" value={hmStart} onChange={(e) => setHmStart(e.target.value)} style={inputStyle} />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--ink-50)" }}>
+            end
+            <input type="time" value={hmEnd} onChange={(e) => setHmEnd(e.target.value)} style={inputStyle} />
+          </label>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 6, marginTop: 10, justifyContent: "flex-end" }}>
+        <button onClick={onSkip} className="qbtn" style={miniBtn("var(--ink-50)")}>
+          skip
+        </button>
+        {editing ? (
+          <button onClick={apply} className="qbtn" style={miniBtn("var(--ink)")}>
+            apply
+          </button>
+        ) : (
+          <button onClick={onEdit} className="qbtn" style={miniBtn("var(--ink)")}>
+            edit
+          </button>
+        )}
+        <button
+          onClick={onAdd}
+          style={{
+            padding: "5px 12px",
+            background: "var(--ink)",
+            color: "var(--paper)",
+            borderRadius: 100,
+            fontSize: 12,
+          }}
+        >
+          add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const inputStyle = {
+  display: "block",
+  marginTop: 4,
+  width: "100%",
+  padding: "5px 8px",
+  border: "1px solid var(--rule)",
+  borderRadius: 4,
+  fontSize: 12.5,
+  fontFamily: "var(--mono)",
+  background: "var(--paper)",
+};
+const miniBtn = (color) => ({
+  padding: "5px 10px",
+  border: "1px solid var(--rule)",
+  borderRadius: 100,
+  fontSize: 12,
+  color,
+});
+
+function isoToHM(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+function isoToDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function patchItemTimes(p, dayStr, startHM, endHM) {
+  if (!dayStr || !startHM) return p;
+  const [y, mo, d] = dayStr.split("-").map(Number);
+  const [sh, sm] = startHM.split(":").map(Number);
+  const start = new Date(y, (mo || 1) - 1, d || 1, sh || 0, sm || 0, 0);
+  let end = p.ends_at ? new Date(p.ends_at) : null;
+  if (endHM) {
+    const [eh, em] = endHM.split(":").map(Number);
+    end = new Date(y, (mo || 1) - 1, d || 1, eh || 0, em || 0, 0);
+    if (end <= start) end.setDate(end.getDate() + 1);
+  }
+  return {
+    ...p,
+    starts_at: start.toISOString(),
+    ends_at: end ? end.toISOString() : p.ends_at,
+  };
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────

@@ -1,6 +1,14 @@
 """Exam widget — workspaces, sources, artifact generation, attempts.
 
-MVP: cheatsheet + practice_set only.
+Drop-to-files flow:
+  POST /exam/workspaces/{ws_id}/ingest  — paste text or upload file_ids;
+       creates summary + flashcard_deck artifacts in parallel.
+
+Flashcard review (TOK-card-style RNN scheduler):
+  POST /exam/flashcards/{artifact_id}/review {card_idx, signal}
+
+Other artifact kinds: cheatsheet, practice_set, concept_map, knowledge_graph,
+simulation. All generation endpoints share /workspaces/{ws_id}/generate.
 """
 
 from __future__ import annotations
@@ -32,9 +40,11 @@ from app.orchestrator.exam_gen import (
     collect_workspace_text,
     generate_cheatsheet,
     generate_concept_map,
+    generate_flashcards,
     generate_knowledge_graph,
     generate_practice_set,
     generate_simulation,
+    generate_summary,
     grade_attempt,
 )
 from app.orchestrator.router import select as select_route
@@ -257,6 +267,7 @@ async def generate_artifact(
     if body.kind not in (
         "cheatsheet", "practice_set", "concept_map",
         "knowledge_graph", "simulation",
+        "summary", "flashcard_deck",
     ):
         raise bad_request(f"unsupported kind: {body.kind}")
 
@@ -274,6 +285,218 @@ async def generate_artifact(
 
     asyncio.create_task(_run_generation(artifact.id, user.id, ws_id, body))
     return _art_out(artifact)
+
+
+class IngestRequest(BaseModel):
+    """Drop-to-files / paste flow."""
+    text: str | None = None
+    file_ids: list[str] = []
+    mode: str = "ulzii"
+    title_hint: str | None = None
+    n_cards: int = 20
+
+
+class IngestResponse(BaseModel):
+    summary_artifact_id: str
+    flashcard_artifact_id: str
+
+
+@router.post("/workspaces/{ws_id}/ingest", response_model=IngestResponse, status_code=202)
+async def ingest_workspace(
+    ws_id: UUID,
+    body: IngestRequest,
+    user: User = Depends(require_esui),
+    session: AsyncSession = Depends(get_session),
+) -> IngestResponse:
+    """Run summary + flashcard generation against pasted text or file_ids.
+
+    The frontend's drop zone calls this with either:
+    - `text`: text/markdown content read client-side, OR
+    - `file_ids`: previously uploaded via /api/v1/files (PDFs, images, etc.).
+
+    Both artifacts are created immediately as `status=generating` and the
+    real work runs in background tasks. Poll /artifacts/{id} or listen on
+    Socket.io `artifact:complete` for completion.
+    """
+    ws = await _ensure_owner(session, ws_id, user.id)
+
+    if not body.text and not body.file_ids:
+        raise bad_request("ingest needs either `text` or `file_ids`")
+
+    # If file_ids supplied: register them as ExamSources (idempotent) and
+    # trigger ingest. The worker will wait for chunks before generating.
+    paste_text: str | None = body.text
+    if body.file_ids:
+        from app.ingest.parse import ingest_file as _ingest_file
+
+        existing = (await session.execute(
+            select(ExamSource).where(ExamSource.workspace_id == ws_id)
+        )).scalars().all()
+        existing_ids = {str(s.file_id) for s in existing}
+
+        for fid in body.file_ids:
+            if fid in existing_ids:
+                continue
+            try:
+                file_uuid = UUID(fid)
+            except ValueError:
+                raise bad_request(f"bad file_id: {fid}")
+            f = await session.get(File, file_uuid)
+            if f is None or f.owner_id != user.id:
+                raise not_found(f"file {fid}")
+            session.add(ExamSource(workspace_id=ws_id, file_id=file_uuid))
+        await session.commit()
+
+        # Kick off ingest in the background — _run_generation polls for chunks.
+        for fid in body.file_ids:
+            asyncio.create_task(_ingest_file(file_id=UUID(fid), target="file_chunks"))
+
+    # Two artifacts; both start in 'generating'.
+    sum_art = ExamArtifact(
+        id=uuid4(), workspace_id=ws_id, kind="summary",
+        title=body.title_hint or f"Summary · {ws.title}",
+        payload={}, status="generating", generated_in_mode=body.mode,
+    )
+    fc_art = ExamArtifact(
+        id=uuid4(), workspace_id=ws_id, kind="flashcard_deck",
+        title=body.title_hint or f"Flashcards · {ws.title}",
+        payload={}, status="generating", generated_in_mode=body.mode,
+    )
+    session.add_all([sum_art, fc_art])
+    await session.commit()
+
+    sum_body = GenerateRequest(
+        kind="summary", mode=body.mode,
+        title=sum_art.title,
+        options={"paste_text": paste_text} if paste_text else {},
+    )
+    fc_body = GenerateRequest(
+        kind="flashcard_deck", mode=body.mode,
+        title=fc_art.title,
+        options={
+            "paste_text": paste_text,
+            "n_cards": body.n_cards,
+        } if paste_text else {"n_cards": body.n_cards},
+    )
+
+    asyncio.create_task(_run_generation(sum_art.id, user.id, ws_id, sum_body))
+    asyncio.create_task(_run_generation(fc_art.id, user.id, ws_id, fc_body))
+
+    return IngestResponse(
+        summary_artifact_id=str(sum_art.id),
+        flashcard_artifact_id=str(fc_art.id),
+    )
+
+
+# ---------- flashcard review (RNN scheduler update) ----------
+
+
+class FlashcardReviewRequest(BaseModel):
+    card_idx: int
+    # 0=again, 0.33=hard, 0.66=good, 1.0=easy — matches the TOK card.html scheme.
+    signal: float
+
+
+class FlashcardReviewResponse(BaseModel):
+    card_idx: int
+    h: float
+    reviews: int
+    streak: int
+    last_review: datetime
+
+
+@router.post(
+    "/flashcards/{artifact_id}/review",
+    response_model=FlashcardReviewResponse,
+)
+async def review_flashcard(
+    artifact_id: UUID,
+    body: FlashcardReviewRequest,
+    user: User = Depends(require_esui),
+    session: AsyncSession = Depends(get_session),
+) -> FlashcardReviewResponse:
+    """Update RNN scheduler state for one card.
+
+    State per card: { h, last_review, reviews, streak } stored inside
+    artifact.payload.review_state[str(card_idx)]. The scheduler is the
+    one from the TOK card.html reference: a sigmoid-wrapped recurrent
+    update with exponential time decay.
+    """
+    a = await session.get(ExamArtifact, artifact_id)
+    if a is None or a.kind != "flashcard_deck":
+        raise not_found("flashcard deck")
+    w = await session.get(ExamWorkspace, a.workspace_id)
+    if w is None or w.owner_id != user.id:
+        raise not_found("flashcard deck")
+
+    payload = dict(a.payload or {})
+    cards = payload.get("cards", [])
+    if not (0 <= body.card_idx < len(cards)):
+        raise bad_request("card_idx out of range")
+    if not (0.0 <= body.signal <= 1.0):
+        raise bad_request("signal must be in [0,1]")
+
+    state = dict(payload.get("review_state") or {})
+    key = str(body.card_idx)
+    s = dict(state.get(key) or {"h": 0.1, "last_review": None, "reviews": 0, "streak": 0})
+
+    new_state = _rnn_update(s, body.signal, datetime.now())
+    state[key] = new_state
+    payload["review_state"] = state
+    a.payload = payload
+    # Force JSONB column re-flush — SQLA tracks dict identity, not contents.
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(a, "payload")
+    await session.commit()
+
+    return FlashcardReviewResponse(
+        card_idx=body.card_idx,
+        h=new_state["h"],
+        reviews=new_state["reviews"],
+        streak=new_state["streak"],
+        last_review=datetime.fromisoformat(new_state["last_review"]),
+    )
+
+
+def _rnn_update(s: dict[str, Any], signal: float, now: datetime) -> dict[str, Any]:
+    """Port of TOK card.html RNNScheduler.update — keeps clients and server in sync.
+
+    h(t+1) = sigmoid( ( w_decay * h(t) * decay(Δt) + w_input * signal ) * 5 - 2 )
+    """
+    import math
+
+    w_decay = 0.85
+    w_input = 0.4
+    decay_rate = 0.03  # per hour
+
+    last_iso = s.get("last_review")
+    if last_iso:
+        try:
+            last = datetime.fromisoformat(last_iso)
+            dt_hours = max(0.0, (now - last).total_seconds() / 3600.0)
+        except Exception:
+            dt_hours = 0.0
+    else:
+        dt_hours = 0.0
+
+    decay = math.exp(-decay_rate * dt_hours)
+    current_h = 1 / (1 + math.exp(-(((w_decay * float(s.get("h", 0.1))) * decay) * 6 - 3)))
+
+    recurrence = w_decay * current_h
+    inp = w_input * float(signal)
+    new_h = 1 / (1 + math.exp(-((recurrence + inp) * 5 - 2)))
+
+    streak = int(s.get("streak", 0))
+    streak = streak + 1 if signal >= 0.5 else 0
+    if streak > 2:
+        new_h = min(1.0, new_h + 0.05)
+
+    return {
+        "h": float(new_h),
+        "last_review": now.isoformat(),
+        "reviews": int(s.get("reviews", 0)) + 1,
+        "streak": streak,
+    }
 
 
 @router.get("/artifacts/{artifact_id}", response_model=ArtifactOut)
@@ -357,7 +580,15 @@ async def create_attempt(
 
 
 def _default_title(kind: str) -> str:
-    return {"cheatsheet": "Cheatsheet", "practice_set": "Practice"}[kind]
+    return {
+        "cheatsheet": "Cheatsheet",
+        "practice_set": "Practice",
+        "concept_map": "Concept map",
+        "knowledge_graph": "Knowledge graph",
+        "simulation": "Simulation",
+        "summary": "Summary",
+        "flashcard_deck": "Flashcards",
+    }.get(kind, kind.replace("_", " ").title())
 
 
 _KIND_TASK = {
@@ -366,6 +597,8 @@ _KIND_TASK = {
     "concept_map": "exam.cheatsheet",      # opus-tier reasoning
     "knowledge_graph": "exam.cheatsheet",  # opus-tier reasoning
     "simulation": "exam.practice_set",     # sonnet for question volume
+    "summary": "exam.cheatsheet",          # sonnet — narrative summary
+    "flashcard_deck": "exam.practice_set", # sonnet — Q/A pair volume
 }
 
 
@@ -392,10 +625,25 @@ async def _run_generation(
             if ws is None:
                 await _fail_artifact(session, artifact_id, "workspace gone")
                 return
-            source_text = await collect_workspace_text(session, ws_id)
-            if not source_text:
-                await _fail_artifact(session, artifact_id, "no source content")
-                return
+
+            # Drop-to-files paste flow: text supplied directly, skip chunks.
+            paste_text = body.options.get("paste_text") if body.options else None
+            if paste_text:
+                source_text = str(paste_text)[:60_000]
+            else:
+                # Wait briefly for newly-added file_ids to finish ingest.
+                # ingest_file is idempotent and returns fast if already-ready.
+                source_text = await collect_workspace_text(session, ws_id)
+                if not source_text:
+                    # Poll up to 25 s for chunks to arrive.
+                    for _ in range(25):
+                        await asyncio.sleep(1)
+                        source_text = await collect_workspace_text(session, ws_id)
+                        if source_text:
+                            break
+                if not source_text:
+                    await _fail_artifact(session, artifact_id, "no source content")
+                    return
 
             spec = select_route(_KIND_TASK[body.kind])  # type: ignore[arg-type]
             model = spec.alias  # all exam kinds resolve to anthropic aliases
@@ -430,6 +678,20 @@ async def _run_generation(
                     duration_min=int(body.options.get("duration_min", 90)),
                     n_questions=int(body.options.get("n_questions", 12)),
                     rubric_mode=body.options.get("rubric_mode", "ai-grade"),
+                )
+            elif body.kind == "summary":
+                payload = await generate_summary(
+                    model=model,
+                    source_text=source_text,
+                    title=ws.title,
+                    mode=body.mode,
+                )
+            elif body.kind == "flashcard_deck":
+                payload = await generate_flashcards(
+                    model=model,
+                    source_text=source_text,
+                    title=ws.title,
+                    n_cards=int(body.options.get("n_cards", 20)),
                 )
             else:
                 await _fail_artifact(session, artifact_id, f"unsupported kind: {body.kind}")

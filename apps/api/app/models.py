@@ -393,9 +393,8 @@ class ExamArtifact(Base):
 
     __table_args__ = (
         CheckConstraint(
-            # MVP supports only 'cheatsheet' and 'practice_set'; constraint allows
-            # the full set for forward compat.
-            "kind IN ('cheatsheet','concept_map','practice_set','knowledge_graph','simulation')",
+            # Includes 'summary' and 'flashcard_deck' for the drop-to-files flow.
+            "kind IN ('cheatsheet','concept_map','practice_set','knowledge_graph','simulation','summary','flashcard_deck')",
             name="exam_artifacts_kind_check",
         ),
         CheckConstraint(

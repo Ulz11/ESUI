@@ -481,6 +481,202 @@ async def generate_simulation(
     raise RuntimeError("no simulation emitted")
 
 
+# ---------- summary (drop-to-files) ----------
+
+
+SUMMARY_TOOL = {
+    "name": "emit_summary",
+    "description": "Emit a narrative summary of the dropped material.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "headline": {
+                "type": "string",
+                "description": "One-line distilled thesis of the material.",
+            },
+            "sections": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "body_md": {"type": "string"},
+                    },
+                    "required": ["title", "body_md"],
+                },
+                "description": "3-6 narrative sections, in reading order.",
+            },
+            "key_terms": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "term": {"type": "string"},
+                        "gloss": {"type": "string"},
+                    },
+                    "required": ["term", "gloss"],
+                },
+                "description": "5-15 load-bearing terms, briefly defined.",
+            },
+            "open_questions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "0-5 questions the source doesn't answer cleanly.",
+            },
+        },
+        "required": ["headline", "sections"],
+    },
+}
+
+
+SUMMARY_SYSTEM_ULZII = """You write study summaries that respect the
+*epistemic shape* of the material — what's foundational vs. derived,
+what's contested, where the load-bearing definitions live.
+
+Voice: a thoughtful tutor narrating the material to a sharp student.
+Use *italics* for the load-bearing word in a sentence. Quote primary
+sources only when precision matters. Don't invent citations."""
+
+
+SUMMARY_SYSTEM_OBAMA = """You write study summaries that orient a busy
+practitioner: what's the thesis, what's the structure, what should I take
+away, what would change my mind.
+
+Voice: a sharp briefer. Recommendation-first. Skip preamble. Use
+*italics* for the load-bearing word. Quantify when it sharpens."""
+
+
+async def generate_summary(
+    *,
+    model: ModelAlias,
+    source_text: str,
+    title: str,
+    mode: str = "ulzii",
+) -> dict[str, Any]:
+    sys_prompt = SUMMARY_SYSTEM_OBAMA if mode == "obama" else SUMMARY_SYSTEM_ULZII
+    user = (
+        f"Title: {title}\n\nSummarize this material. 3–6 sections, "
+        f"5–15 key terms, 0–5 open questions:\n\n{source_text}"
+    )
+    client = get_client()
+    resp = await client.messages.create(
+        model=MODEL_IDS[model],
+        max_tokens=4000,
+        temperature=0.3,
+        system=sys_prompt,
+        tools=[SUMMARY_TOOL],
+        tool_choice={"type": "tool", "name": "emit_summary"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for b in resp.content:
+        if getattr(b, "type", "") == "tool_use" and b.name == "emit_summary":
+            return {
+                "version": 1,
+                **b.input,
+                "tokens_in": resp.usage.input_tokens,
+                "tokens_out": resp.usage.output_tokens,
+            }
+    raise RuntimeError("no summary emitted")
+
+
+# ---------- flashcards (Anki-style flip) ----------
+
+
+FLASHCARD_TOOL = {
+    "name": "emit_flashcards",
+    "description": "Emit a flashcard deck (front/back pairs).",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "cards": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "front": {
+                            "type": "string",
+                            "description": "Question or prompt — the side shown first.",
+                        },
+                        "back": {
+                            "type": "string",
+                            "description": "Answer — concise but complete enough to teach.",
+                        },
+                        "topic": {
+                            "type": "string",
+                            "description": "Sub-topic tag for grouping in the UI.",
+                        },
+                        "difficulty": {
+                            "type": "number",
+                            "description": "0.0 = warm-up, 1.0 = hardest.",
+                        },
+                    },
+                    "required": ["front", "back", "topic"],
+                },
+                "description": "Ordered list, gentle to hard within each topic.",
+            },
+            "topics": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Distinct topics covered, in encounter order.",
+            },
+        },
+        "required": ["cards"],
+    },
+}
+
+
+FLASHCARD_SYSTEM = """You produce flashcard decks for active recall study.
+Each card: ONE atomic question on the front, a concise but complete answer
+on the back (1–4 sentences; longer only when proof / derivation requires).
+
+Cover the material's RANGE — don't cluster on one topic. Mix factual recall
+with reasoning prompts. Avoid trivia; favour load-bearing concepts.
+
+Front: phrased as a clean question. Don't give away the answer.
+Back: teach the concept, not just state the fact. Include a brief 'why'.
+Use *italics* for the load-bearing word. Don't invent citations."""
+
+
+async def generate_flashcards(
+    *,
+    model: ModelAlias,
+    source_text: str,
+    title: str,
+    n_cards: int = 20,
+) -> dict[str, Any]:
+    user = (
+        f"Title: {title}\n\nProduce a deck of {n_cards} flashcards from these "
+        f"sources. Cover the range; gentle → hard within each topic.\n\n{source_text}"
+    )
+    client = get_client()
+    resp = await client.messages.create(
+        model=MODEL_IDS[model],
+        max_tokens=8000,
+        temperature=0.5,
+        system=FLASHCARD_SYSTEM,
+        tools=[FLASHCARD_TOOL],
+        tool_choice={"type": "tool", "name": "emit_flashcards"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for b in resp.content:
+        if getattr(b, "type", "") == "tool_use" and b.name == "emit_flashcards":
+            cards = b.input.get("cards", [])
+            # Initialize per-card RNN scheduler state at h=0.1 (new card,
+            # weak memory). The frontend updates these via /flashcards/{id}/review.
+            review_state = {
+                str(i): {"h": 0.1, "last_review": None, "reviews": 0, "streak": 0}
+                for i in range(len(cards))
+            }
+            return {
+                "version": 1,
+                **b.input,
+                "review_state": review_state,
+                "tokens_in": resp.usage.input_tokens,
+                "tokens_out": resp.usage.output_tokens,
+            }
+    raise RuntimeError("no flashcards emitted")
+
+
 # ---------- grading ----------
 
 

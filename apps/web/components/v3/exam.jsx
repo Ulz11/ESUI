@@ -1,91 +1,89 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Empty, Skel } from "./atoms";
 import { I } from "./icons";
 import { api } from "@/lib/api";
+import { examApi } from "@/lib/exam-api";
 
-// Exam — workspaces, artifacts. Wired to /api/v1/exam.
+// Exam — drop-to-files / auto-summary / flip-card flashcards.
+//
+// Flow:
+//   1. Drop a file or paste text into the drop zone.
+//   2. The server runs Sonnet twice in parallel (summary + flashcards).
+//   3. Both artifacts appear inline as soon as they're ready.
+//   4. Flashcards use the same RNN-inspired scheduler as TOK card.html
+//      (server-side, so progress survives reload).
+//   5. Cheatsheet / practice / concept map are still available as
+//      secondary actions for when she wants more depth.
 
 function ExamView({ mode }) {
   const [workspaces, setWorkspaces] = useState(null);
   const [activeId, setActiveId] = useState(null);
-  const [tab, setTab] = useState("cheatsheet");
   const [artifacts, setArtifacts] = useState([]);
   const [loadingArt, setLoadingArt] = useState(false);
-  const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    api
-      .get("/api/v1/exam/workspaces")
+  const reloadWorkspaces = useCallback(() => {
+    examApi.workspaces()
       .then((ws) => {
         setWorkspaces(ws);
-        if (ws.length > 0) setActiveId(ws[0].id);
+        if (ws.length > 0 && !activeId) setActiveId(ws[0].id);
       })
       .catch(() => setWorkspaces([]));
-  }, []);
+  }, [activeId]);
 
-  useEffect(() => {
+  useEffect(() => { reloadWorkspaces(); }, []); // initial only
+
+  const reloadArtifacts = useCallback(() => {
     if (!activeId) {
       setArtifacts([]);
       return;
     }
     setLoadingArt(true);
-    api
-      .get(`/api/v1/exam/workspaces/${activeId}/artifacts`)
+    examApi.artifacts(activeId)
       .then(setArtifacts)
       .catch(() => setArtifacts([]))
       .finally(() => setLoadingArt(false));
   }, [activeId]);
 
-  const onCreate = async () => {
-    const title = window.prompt("workspace title?");
+  useEffect(reloadArtifacts, [reloadArtifacts]);
+
+  // Poll for in-flight (status='generating') artifacts every 2.5s. Once all
+  // are 'ready' we stop polling.
+  useEffect(() => {
+    const inflight = artifacts.some((a) => a.status === "generating");
+    if (!inflight) return;
+    const id = setInterval(reloadArtifacts, 2500);
+    return () => clearInterval(id);
+  }, [artifacts, reloadArtifacts]);
+
+  const onCreateWorkspace = async () => {
+    const title = window.prompt("Workspace title?");
     if (!title) return;
     try {
-      const ws = await api.post("/api/v1/exam/workspaces", { title });
+      const ws = await examApi.createWorkspace({ title });
       setWorkspaces([ws, ...(workspaces || [])]);
       setActiveId(ws.id);
     } catch {}
   };
 
-  const onGenerate = async (kind) => {
-    if (!activeId) return;
-    setCreating(true);
-    try {
-      const a = await api.post(
-        `/api/v1/exam/workspaces/${activeId}/generate`,
-        { kind, mode },
-      );
-      // show new artifact at top of list
-      setArtifacts([a, ...artifacts]);
-    } catch {} finally {
-      setCreating(false);
-    }
-  };
-
   const activeWS = (workspaces || []).find((w) => w.id === activeId);
-  const tabKindMap = {
-    cheatsheet: "cheatsheet",
-    practice: "practice_set",
-    sim: "simulation",
-    graph: "knowledge_graph",
-  };
-  const visibleArtifact = artifacts.find((a) => a.kind === tabKindMap[tab]);
+
+  const summary = artifacts.find((a) => a.kind === "summary");
+  const deck = artifacts.find((a) => a.kind === "flashcard_deck");
+  const cheatsheet = artifacts.find((a) => a.kind === "cheatsheet");
+  const practice = artifacts.find((a) => a.kind === "practice_set");
+  const graph = artifacts.find((a) => a.kind === "knowledge_graph");
 
   return (
     <div style={{ height: "100%", display: "grid", gridTemplateColumns: "260px 1fr", overflow: "hidden" }}>
+      {/* Sidebar */}
       <div style={{ borderRight: "1px solid var(--rule)", padding: "22px 18px", overflow: "auto" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
           <div className="mono" style={{ fontSize: 11, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink-35)" }}>
             workspaces
           </div>
-          <button onClick={onCreate} className="qbtn" title="new workspace">
+          <button onClick={onCreateWorkspace} className="qbtn" title="new workspace">
             <I.plus size={14} />
           </button>
         </div>
@@ -94,7 +92,7 @@ function ExamView({ mode }) {
             <Skel w="80%" />
           ) : workspaces.length === 0 ? (
             <div style={{ color: "var(--ink-35)", fontSize: 12, fontStyle: "italic", fontFamily: "var(--serif)", padding: "12px" }}>
-              create a workspace, add sources, ask for a cheatsheet.
+              create a workspace, drop in your notes.
             </div>
           ) : (
             workspaces.map((w) => (
@@ -126,68 +124,79 @@ function ExamView({ mode }) {
           )}
         </div>
       </div>
+
+      {/* Main */}
       <div style={{ overflow: "auto" }}>
         {!activeWS ? (
           <Empty>create a workspace on the left to begin.</Empty>
         ) : (
           <>
-            <div style={{ padding: "22px 32px 0", borderBottom: "1px solid var(--rule-soft)" }}>
+            {/* Header */}
+            <div style={{ padding: "22px 32px 14px", borderBottom: "1px solid var(--rule-soft)" }}>
               <div className="mono" style={{ fontSize: 11, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink-35)" }}>
                 {activeWS.subject || "exam workspace"}
               </div>
               <div style={{ fontFamily: "var(--serif)", fontSize: 28, marginTop: 4 }}>
                 <em>{activeWS.title}</em>
               </div>
-              <div style={{ display: "flex", gap: 4, marginTop: 18 }}>
-                {[
-                  ["cheatsheet", "cheatsheet"],
-                  ["graph", "knowledge graph"],
-                  ["practice", "practice set"],
-                  ["sim", "simulation"],
-                ].map(([k, l]) => (
-                  <button
-                    key={k}
-                    onClick={() => setTab(k)}
-                    style={{
-                      padding: "10px 14px",
-                      borderBottom: tab === k ? "2px solid var(--ink)" : "2px solid transparent",
-                      color: tab === k ? "var(--ink)" : "var(--ink-50)",
-                      fontSize: 13.5,
-                      marginBottom: -1,
-                    }}
-                  >
-                    {l}
-                  </button>
-                ))}
-              </div>
             </div>
-            <div style={{ padding: "24px 32px" }}>
-              {loadingArt ? (
+
+            {/* Drop zone — always visible at top */}
+            <div style={{ padding: "24px 32px 0" }}>
+              <DropZone
+                workspaceId={activeWS.id}
+                mode={mode}
+                onIngested={reloadArtifacts}
+              />
+            </div>
+
+            {/* Summary */}
+            <div style={{ padding: "32px 32px 0" }}>
+              <SectionHeader>Summary</SectionHeader>
+              {loadingArt && !summary ? (
                 <Skel w="60%" />
-              ) : visibleArtifact ? (
-                <ArtifactRenderer artifact={visibleArtifact} mode={mode} />
+              ) : !summary ? (
+                <EmptyMicro line="drop something above — a summary appears here." />
+              ) : summary.status === "generating" ? (
+                <Generating mode={mode} label="reading the material…" />
+              ) : summary.status === "error" ? (
+                <ErrorLine error={summary.error} />
               ) : (
-                <Empty>
-                  <div style={{ marginBottom: 14 }}>
-                    no {tab} for this workspace yet.
-                  </div>
-                  <button
-                    onClick={() => onGenerate(tabKindMap[tab])}
-                    disabled={creating}
-                    style={{
-                      padding: "8px 16px",
-                      background: "var(--ink)",
-                      color: "var(--paper)",
-                      borderRadius: 100,
-                      fontSize: 13,
-                      fontStyle: "normal",
-                      fontFamily: "var(--sans)",
-                    }}
-                  >
-                    {creating ? "generating…" : `generate ${tab}`}
-                  </button>
-                </Empty>
+                <SummaryRender artifact={summary} mode={mode} />
               )}
+            </div>
+
+            {/* Flashcards */}
+            <div style={{ padding: "32px 32px 0" }}>
+              <SectionHeader
+                right={deck && deck.status === "ready" ? `${(deck.payload?.cards || []).length} cards` : ""}
+              >
+                Flashcards
+              </SectionHeader>
+              {loadingArt && !deck ? (
+                <Skel w="60%" />
+              ) : !deck ? (
+                <EmptyMicro line="flip-card deck appears here once the material is processed." />
+              ) : deck.status === "generating" ? (
+                <Generating mode={mode} label="building flashcards…" />
+              ) : deck.status === "error" ? (
+                <ErrorLine error={deck.error} />
+              ) : (
+                <FlashcardSession deck={deck} onUpdate={reloadArtifacts} />
+              )}
+            </div>
+
+            {/* Secondary actions */}
+            <div style={{ padding: "32px 32px 64px" }}>
+              <SectionHeader>More options</SectionHeader>
+              <SecondaryActions
+                workspace={activeWS}
+                mode={mode}
+                cheatsheet={cheatsheet}
+                practice={practice}
+                graph={graph}
+                onGenerate={reloadArtifacts}
+              />
             </div>
           </>
         )}
@@ -196,53 +205,764 @@ function ExamView({ mode }) {
   );
 }
 
-function ArtifactRenderer({ artifact, mode }) {
-  if (artifact.kind === "cheatsheet") {
-    const sections = artifact.payload?.sections || [];
-    return (
-      <div style={{ maxWidth: 800, margin: "0 auto" }}>
-        {sections.map((s, i) => (
-          <div key={i} style={{ borderTop: "1px solid var(--rule)", padding: "24px 0" }}>
-            <div
-              className="mono"
-              style={{
-                fontSize: 11,
-                letterSpacing: ".14em",
-                textTransform: "uppercase",
-                color: mode === "ulzii" ? "var(--sky)" : "var(--forest)",
-              }}
-            >
-              {s.title}
-            </div>
-            <div style={{ fontFamily: "var(--serif)", fontSize: 18, lineHeight: 1.65, marginTop: 10, color: "var(--ink)" }}>
-              {(s.items || []).map((it, j) => (
-                <div key={j} style={{ marginTop: j === 0 ? 0 : 14 }}>
-                  <strong>{it.name}</strong>
-                  <div style={{ color: "var(--ink-70)", marginTop: 4, whiteSpace: "pre-wrap" }}>
-                    {it.body_md}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-  if (artifact.kind === "knowledge_graph") {
-    const data = artifact.payload || {};
-    return (
-      <div style={{ color: "var(--ink-50)", fontStyle: "italic", fontFamily: "var(--serif)" }}>
-        {data.nodes?.length ?? 0} concepts across {data.regions?.length ?? 0} regions.
-        (3D visualization coming.)
-      </div>
-    );
-  }
+// ─── Drop zone ──────────────────────────────────────────────────────────────
+
+function DropZone({ workspaceId, mode, onIngested }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [hover, setHover] = useState(false);
+  const depth = useRef(0);
+  const inputRef = useRef(null);
+
+  const startIngest = useCallback(async (payload) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await examApi.ingest(workspaceId, { ...payload, mode });
+      setText("");
+      onIngested();
+    } catch (e) {
+      setError(e?.message || "ingest failed");
+    } finally {
+      setBusy(false);
+    }
+  }, [workspaceId, mode, onIngested]);
+
+  const handleFiles = useCallback(async (files) => {
+    if (!files || files.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Split: text-like → read client-side; binary → upload via /files.
+      const textPieces = [];
+      const fileIds = [];
+      for (const f of files) {
+        const isTextLike = /^text\//.test(f.type) || /\.(md|txt|markdown)$/i.test(f.name);
+        if (isTextLike) {
+          textPieces.push(`# ${f.name}\n\n${await f.text()}`);
+        } else {
+          // binary upload
+          const uploaded = await api.upload("/api/v1/files", f, { kind: "exam_source" });
+          fileIds.push(uploaded.id);
+        }
+      }
+      const combinedText = [text.trim(), ...textPieces].filter(Boolean).join("\n\n---\n\n");
+      await examApi.ingest(workspaceId, {
+        text: combinedText || undefined,
+        file_ids: fileIds.length ? fileIds : undefined,
+        mode,
+      });
+      setText("");
+      onIngested();
+    } catch (e) {
+      setError(e?.message || "upload failed");
+    } finally {
+      setBusy(false);
+    }
+  }, [workspaceId, text, mode, onIngested]);
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    depth.current = 0;
+    setHover(false);
+    handleFiles([...(e.dataTransfer?.files || [])]);
+  };
+  const onDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    depth.current += 1;
+    setHover(true);
+  };
+  const onDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    depth.current = Math.max(0, depth.current - 1);
+    if (depth.current === 0) setHover(false);
+  };
+  const onDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   return (
-    <pre style={{ whiteSpace: "pre-wrap", fontFamily: "var(--serif)", fontSize: 14, color: "var(--ink-70)" }}>
-      {JSON.stringify(artifact.payload, null, 2)}
-    </pre>
+    <div
+      onDrop={onDrop}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      style={{
+        border: hover ? "2px dashed var(--ink)" : "2px dashed var(--rule)",
+        background: hover ? "var(--ink-06)" : "var(--surface)",
+        borderRadius: "var(--r-lg)",
+        padding: "28px 28px 22px",
+        transition: "background .15s, border-color .15s",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+        <I.upload size={18} />
+        <div>
+          <div style={{ fontFamily: "var(--serif)", fontSize: 19, color: "var(--ink)" }}>
+            <em>Drop notes, exercises, or topics</em>
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-50)", marginTop: 3 }}>
+            text & markdown read in place · PDFs and images upload first · or paste below
+          </div>
+        </div>
+        <button
+          onClick={() => inputRef.current?.click()}
+          className="qbtn"
+          style={{
+            marginLeft: "auto",
+            padding: "6px 12px",
+            border: "1px solid var(--rule)",
+            borderRadius: 100,
+            fontSize: 12.5,
+          }}
+        >
+          choose files
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => handleFiles([...(e.target.files || [])])}
+        />
+      </div>
+
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={4}
+        placeholder="…or paste a passage, an outline, a problem set."
+        style={{
+          width: "100%",
+          padding: "14px 16px",
+          border: "1px solid var(--rule)",
+          borderRadius: "var(--r-md)",
+          fontFamily: "var(--serif)",
+          fontSize: 15,
+          lineHeight: 1.5,
+          background: "var(--paper)",
+          resize: "vertical",
+        }}
+      />
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
+        <div style={{ fontSize: 12, color: "var(--ink-35)", fontStyle: "italic", fontFamily: "var(--serif)" }}>
+          {busy ? "thinking…" : error ? <span style={{ color: "var(--rose)" }}>{error}</span> : "Sonnet runs summary + flashcards in parallel"}
+        </div>
+        <button
+          onClick={() => startIngest({ text: text.trim() })}
+          disabled={busy || !text.trim()}
+          style={{
+            padding: "8px 16px",
+            background: text.trim() ? "var(--ink)" : "var(--ink-20)",
+            color: "var(--paper)",
+            borderRadius: 100,
+            fontSize: 13,
+            opacity: busy ? 0.7 : 1,
+            cursor: busy || !text.trim() ? "default" : "pointer",
+          }}
+        >
+          {busy ? "running…" : "summarize & build flashcards"}
+        </button>
+      </div>
+    </div>
   );
 }
+
+// ─── Summary render ─────────────────────────────────────────────────────────
+
+function SummaryRender({ artifact, mode }) {
+  const p = artifact.payload || {};
+  const accent = mode === "ulzii" ? "var(--sky)" : "var(--forest)";
+  return (
+    <div style={{ maxWidth: 820 }}>
+      {p.headline && (
+        <div style={{ fontFamily: "var(--serif)", fontSize: 22, color: "var(--ink)", lineHeight: 1.4, fontStyle: "italic", marginBottom: 22 }}>
+          {p.headline}
+        </div>
+      )}
+      {(p.sections || []).map((s, i) => (
+        <div key={i} style={{ borderTop: "1px solid var(--rule-soft)", padding: "18px 0" }}>
+          <div className="mono" style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: accent }}>
+            {s.title}
+          </div>
+          <div style={{ fontFamily: "var(--serif)", fontSize: 16, lineHeight: 1.65, marginTop: 8, color: "var(--ink-70)", whiteSpace: "pre-wrap" }}>
+            {s.body_md}
+          </div>
+        </div>
+      ))}
+      {p.key_terms && p.key_terms.length > 0 && (
+        <div style={{ borderTop: "1px solid var(--rule)", marginTop: 18, paddingTop: 18 }}>
+          <div className="mono" style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-50)", marginBottom: 12 }}>
+            key terms
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+            {p.key_terms.map((t, i) => (
+              <div key={i} style={{ padding: "10px 12px", border: "1px solid var(--rule-soft)", borderRadius: "var(--r-sm)" }}>
+                <div style={{ fontFamily: "var(--serif)", fontStyle: "italic", color: "var(--ink)" }}>{t.term}</div>
+                <div style={{ fontSize: 13, color: "var(--ink-50)", marginTop: 4, lineHeight: 1.4 }}>{t.gloss}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {p.open_questions && p.open_questions.length > 0 && (
+        <div style={{ marginTop: 22 }}>
+          <div className="mono" style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-50)", marginBottom: 10 }}>
+            open questions
+          </div>
+          {p.open_questions.map((q, i) => (
+            <div key={i} style={{ padding: "10px 14px", background: "#f5e9c8", borderRadius: 8, fontFamily: "var(--serif)", fontStyle: "italic", color: "var(--ink-70)", fontSize: 14, marginBottom: 8 }}>
+              {q}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Flashcards (TOK card.html-inspired) ────────────────────────────────────
+
+function FlashcardSession({ deck, onUpdate }) {
+  // Local copy of cards + review_state. We update optimistically on rate(),
+  // then call /review which returns canonical state for the rated card.
+  const cards = deck.payload?.cards || [];
+  const [state, setState] = useState(() => deck.payload?.review_state || {});
+  const [queue, setQueue] = useState(() => buildQueue(cards, deck.payload?.review_state || {}));
+  const [idx, setIdx] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [reviewedCount, setReviewedCount] = useState(0);
+
+  // If the deck artifact reloads (e.g. after a generate), reset state from server.
+  useEffect(() => {
+    setState(deck.payload?.review_state || {});
+    setQueue(buildQueue(cards, deck.payload?.review_state || {}));
+    setIdx(0);
+    setFlipped(false);
+    setReviewedCount(0);
+  }, [deck.id, cards.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stats = useMemo(() => computeStats(cards, state), [cards, state]);
+
+  const flip = () => setFlipped((f) => !f);
+
+  const rate = useCallback(async (signal) => {
+    if (idx >= queue.length) return;
+    const cardIdx = queue[idx];
+
+    // Optimistic local update — server returns canonical state on response.
+    setState((prev) => ({
+      ...prev,
+      [cardIdx]: localRnnUpdate(prev[cardIdx] || { h: 0.1, last_review: null, reviews: 0, streak: 0 }, signal),
+    }));
+
+    let nextQueue = queue;
+    if (signal < 0.33) {
+      // Re-insert this card 3-5 positions ahead (matches TOK card.html).
+      const insertAt = Math.min(idx + 3 + Math.floor(Math.random() * 3), queue.length);
+      nextQueue = [...queue.slice(0, insertAt), cardIdx, ...queue.slice(insertAt)];
+      setQueue(nextQueue);
+    }
+
+    setIdx((i) => i + 1);
+    setFlipped(false);
+    setReviewedCount((c) => c + 1);
+
+    // Persist to server (fire-and-forget; we already updated locally).
+    try {
+      const resp = await examApi.reviewFlashcard(deck.id, { card_idx: cardIdx, signal });
+      setState((prev) => ({
+        ...prev,
+        [cardIdx]: {
+          h: resp.h,
+          last_review: resp.last_review,
+          reviews: resp.reviews,
+          streak: resp.streak,
+        },
+      }));
+    } catch {
+      // Roll back the optimistic update on failure (rare; let it slide for now).
+    }
+  }, [idx, queue, deck.id]);
+
+  // Keyboard shortcuts: Space/Enter = flip, 1-4 = rate when flipped
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        flip();
+      }
+      if (flipped) {
+        if (e.key === "1") rate(0);
+        else if (e.key === "2") rate(0.33);
+        else if (e.key === "3") rate(0.66);
+        else if (e.key === "4") rate(1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flipped, rate]);
+
+  if (cards.length === 0) {
+    return <EmptyMicro line="flashcard deck is empty." />;
+  }
+
+  if (idx >= queue.length) {
+    return (
+      <div style={{ padding: "40px 0", textAlign: "center" }}>
+        <div style={{ fontFamily: "var(--serif)", fontSize: 22, color: "var(--ink)", marginBottom: 6 }}>
+          <em>Session complete</em>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--ink-50)", marginBottom: 20 }}>
+          {reviewedCount} card{reviewedCount === 1 ? "" : "s"} reviewed.
+        </div>
+        <button
+          onClick={() => {
+            const newState = state;
+            setQueue(buildQueue(cards, newState));
+            setIdx(0);
+            setFlipped(false);
+            setReviewedCount(0);
+            onUpdate?.();
+          }}
+          className="qbtn"
+          style={{ padding: "8px 16px", border: "1px solid var(--rule)", borderRadius: 100 }}
+        >
+          start another pass
+        </button>
+      </div>
+    );
+  }
+
+  const cardIdx = queue[idx];
+  const card = cards[cardIdx];
+  const cardState = state[cardIdx] || { h: 0.1, reviews: 0 };
+  const dots = Math.round((cardState.h ?? 0.1) * 5);
+  const total = queue.length;
+  const pct = Math.round((idx / total) * 100);
+
+  return (
+    <div style={{ maxWidth: 600, margin: "0 auto" }}>
+      {/* Stats bar */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderTop: "1px solid var(--rule-soft)", borderBottom: "1px solid var(--rule-soft)", marginBottom: 22 }}>
+        <Stat label="due" value={stats.due} color="var(--rose)" />
+        <Stat label="learning" value={stats.learning} color="var(--gold)" />
+        <Stat label="mastered" value={stats.mastered} color="var(--forest)" />
+        <Stat label="reviewed" value={reviewedCount} />
+      </div>
+
+      {/* Card */}
+      <div
+        onClick={flip}
+        style={{
+          perspective: "1200px",
+          width: "100%",
+          height: 320,
+          cursor: "pointer",
+          marginBottom: 20,
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            width: "100%",
+            height: "100%",
+            transition: "transform 0.55s cubic-bezier(0.16, 1, 0.3, 1)",
+            transformStyle: "preserve-3d",
+            transform: flipped ? "rotateY(180deg)" : "none",
+          }}
+        >
+          <CardFace
+            number={`Card ${idx + 1} / ${total}`}
+            badge={card.topic}
+            body={card.front}
+            hint="click to reveal answer"
+            flipped={false}
+            isQuestion
+          />
+          <CardFace
+            number="Answer"
+            badge={card.topic}
+            body={card.back}
+            hint="rate your recall below"
+            flipped
+          />
+        </div>
+      </div>
+
+      {/* Confidence buttons */}
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          marginBottom: 20,
+          opacity: flipped ? 1 : 0.35,
+          pointerEvents: flipped ? "auto" : "none",
+          transition: "opacity 0.25s",
+        }}
+      >
+        <ConfBtn label="Again" k="1" accent="var(--rose)"   onClick={() => rate(0)}    />
+        <ConfBtn label="Hard"  k="2" accent="var(--gold)"   onClick={() => rate(0.33)} />
+        <ConfBtn label="Good"  k="3" accent="var(--forest)" onClick={() => rate(0.66)} />
+        <ConfBtn label="Easy"  k="4" accent="var(--ink)"    onClick={() => rate(1)}    />
+      </div>
+
+      {/* Progress + memory */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
+        <div style={{ flex: 1, height: 2, background: "var(--rule)", position: "relative", overflow: "hidden" }}>
+          <div
+            style={{
+              position: "absolute",
+              left: 0, top: 0, bottom: 0,
+              width: `${pct}%`,
+              background: "var(--ink)",
+              transition: "width 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+          />
+        </div>
+        <div className="mono tnum" style={{ fontSize: 10, color: "var(--ink-35)" }}>{pct}%</div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span className="mono" style={{ fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--ink-35)" }}>
+          memory strength
+        </span>
+        <div style={{ display: "flex", gap: 4 }}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div
+              key={i}
+              style={{
+                width: 8,
+                height: 8,
+                background: i <= dots ? "var(--ink)" : "transparent",
+                border: `1px solid ${i <= dots ? "var(--ink)" : "var(--rule)"}`,
+                transition: "all 0.3s",
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CardFace({ number, badge, body, hint, flipped, isQuestion }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        backfaceVisibility: "hidden",
+        WebkitBackfaceVisibility: "hidden",
+        border: "1.5px solid var(--ink)",
+        background: "var(--paper)",
+        display: "flex",
+        flexDirection: "column",
+        padding: "30px 32px",
+        overflowY: "auto",
+        borderRadius: "var(--r-md)",
+        transform: flipped ? "rotateY(180deg)" : "none",
+      }}
+    >
+      <div className="mono" style={{ fontSize: 9, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-35)", marginBottom: 6 }}>
+        {number}
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          letterSpacing: ".1em",
+          textTransform: "uppercase",
+          color: "var(--rose)",
+          fontWeight: 600,
+          marginBottom: 18,
+          alignSelf: "flex-start",
+          borderBottom: "1px solid var(--rose)",
+          paddingBottom: 2,
+        }}
+      >
+        {badge}
+      </div>
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          fontFamily: isQuestion ? "var(--serif)" : "var(--serif)",
+          fontSize: isQuestion ? 22 : 16,
+          lineHeight: isQuestion ? 1.4 : 1.65,
+          color: isQuestion ? "var(--ink)" : "var(--ink-70)",
+          letterSpacing: isQuestion ? "-0.005em" : 0,
+          fontStyle: isQuestion ? "italic" : "normal",
+        }}
+      >
+        {body}
+      </div>
+      <div
+        style={{
+          fontSize: 11,
+          color: "var(--ink-35)",
+          textAlign: "center",
+          marginTop: "auto",
+          paddingTop: 12,
+          borderTop: "1px solid var(--rule-soft)",
+        }}
+      >
+        {hint}
+      </div>
+    </div>
+  );
+}
+
+function ConfBtn({ label, k, accent, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: "12px 10px",
+        border: "1.5px solid var(--ink)",
+        background: "var(--paper)",
+        fontSize: 11,
+        fontWeight: 600,
+        textTransform: "uppercase",
+        letterSpacing: ".1em",
+        cursor: "pointer",
+        position: "relative",
+        overflow: "hidden",
+        transition: "transform .15s, box-shadow .15s",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,.08)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "none";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    >
+      {label}
+      <span
+        style={{
+          display: "block",
+          fontSize: 9,
+          color: "var(--ink-35)",
+          fontWeight: 400,
+          marginTop: 3,
+        }}
+      >
+        {k}
+      </span>
+      <span
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 3,
+          background: accent,
+        }}
+      />
+    </button>
+  );
+}
+
+function Stat({ label, value, color }) {
+  return (
+    <div style={{ padding: "12px 18px", borderRight: "1px solid var(--rule-soft)" }}>
+      <div className="mono" style={{ fontSize: 9, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-35)", marginBottom: 4 }}>
+        {label}
+      </div>
+      <div className="tnum" style={{ fontFamily: "var(--serif)", fontSize: 24, letterSpacing: "-.03em", color: color || "var(--ink)" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// ─── secondary actions ──────────────────────────────────────────────────────
+
+function SecondaryActions({ workspace, mode, cheatsheet, practice, graph, onGenerate }) {
+  const [busy, setBusy] = useState(null);
+
+  const generate = async (kind) => {
+    setBusy(kind);
+    try {
+      await examApi.generate(workspace.id, { kind, mode });
+      onGenerate();
+    } catch {} finally {
+      setBusy(null);
+    }
+  };
+
+  const items = [
+    { kind: "cheatsheet",      label: "cheatsheet",         existing: cheatsheet },
+    { kind: "practice_set",    label: "practice set",       existing: practice },
+    { kind: "knowledge_graph", label: "knowledge graph",    existing: graph },
+  ];
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+      {items.map((it) => (
+        <div
+          key={it.kind}
+          style={{
+            padding: "14px 16px",
+            border: "1px solid var(--rule)",
+            borderRadius: "var(--r-md)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+            <span style={{ fontFamily: "var(--serif)", fontSize: 16, color: "var(--ink)" }}>
+              <em>{it.label}</em>
+            </span>
+            {it.existing && it.existing.status === "ready" && (
+              <span className="mono" style={{ fontSize: 10, color: "var(--forest)", letterSpacing: ".06em", textTransform: "uppercase" }}>
+                ready
+              </span>
+            )}
+            {it.existing && it.existing.status === "generating" && (
+              <span className="mono" style={{ fontSize: 10, color: "var(--gold)", letterSpacing: ".06em", textTransform: "uppercase" }}>
+                generating
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-50)", lineHeight: 1.5, fontFamily: "var(--serif)", fontStyle: "italic" }}>
+            {it.kind === "cheatsheet" && "compressed for the day before."}
+            {it.kind === "practice_set" && "10 calibrated questions."}
+            {it.kind === "knowledge_graph" && "voronoi map of the territory."}
+          </div>
+          <button
+            onClick={() => generate(it.kind)}
+            disabled={busy === it.kind || it.existing?.status === "generating"}
+            className="qbtn"
+            style={{
+              alignSelf: "flex-start",
+              marginTop: 6,
+              padding: "5px 10px",
+              border: "1px solid var(--rule)",
+              borderRadius: 100,
+              fontSize: 12,
+              opacity: busy === it.kind ? 0.6 : 1,
+            }}
+          >
+            {busy === it.kind ? "starting…" : it.existing ? "regenerate" : "generate"}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── small primitives ───────────────────────────────────────────────────────
+
+function SectionHeader({ children, right }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+      <div className="mono" style={{ fontSize: 12, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)", fontWeight: 700 }}>
+        {children}
+      </div>
+      {right && (
+        <div className="mono" style={{ fontSize: 11, color: "var(--ink-35)" }}>{right}</div>
+      )}
+    </div>
+  );
+}
+
+function EmptyMicro({ line }) {
+  return (
+    <div style={{ fontFamily: "var(--serif)", fontStyle: "italic", color: "var(--ink-50)", fontSize: 14, padding: "8px 0 24px" }}>
+      {line}
+    </div>
+  );
+}
+
+function Generating({ mode, label }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 0" }}>
+      <div
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 11,
+          border: `1.5px solid ${mode === "ulzii" ? "var(--sky)" : "var(--forest)"}`,
+          animation: "pulse 2.2s ease-in-out infinite",
+        }}
+      />
+      <div style={{ fontFamily: "var(--serif)", fontSize: 15, fontStyle: "italic", color: "var(--ink-50)" }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function ErrorLine({ error }) {
+  return (
+    <div style={{ padding: "10px 14px", background: "rgba(193,52,71,.08)", borderRadius: 6, color: "var(--rose)", fontSize: 13.5 }}>
+      {error || "something went wrong — try again."}
+    </div>
+  );
+}
+
+// ─── client-side scheduler (mirror of server) ───────────────────────────────
+
+function buildQueue(cards, state) {
+  const ids = cards.map((_, i) => i);
+  // Higher priority (1 - h) first; ties broken by index.
+  return ids
+    .map((i) => [i, getPriority(state[i])])
+    .sort((a, b) => b[1] - a[1])
+    .map(([i]) => i);
+}
+
+function getPriority(s) {
+  if (!s) return 0.9;
+  return 1 - clamp01(currentMemoryStrength(s));
+}
+
+function currentMemoryStrength(s) {
+  if (!s.last_review) return s.h ?? 0.1;
+  const dtH = Math.max(0, (Date.now() - new Date(s.last_review).getTime()) / 3_600_000);
+  const decay = Math.exp(-0.03 * dtH);
+  return sigmoid(((0.85 * (s.h ?? 0.1)) * decay) * 6 - 3);
+}
+
+function localRnnUpdate(s, signal) {
+  const currentH = currentMemoryStrength(s);
+  const recurrence = 0.85 * currentH;
+  const inp = 0.4 * signal;
+  let h = sigmoid((recurrence + inp) * 5 - 2);
+  const streak = signal >= 0.5 ? (s.streak || 0) + 1 : 0;
+  if (streak > 2) h = Math.min(1, h + 0.05);
+  return {
+    h,
+    last_review: new Date().toISOString(),
+    reviews: (s.reviews || 0) + 1,
+    streak,
+  };
+}
+
+function computeStats(cards, state) {
+  let mastered = 0, learning = 0, n = 0, due = 0;
+  cards.forEach((_, i) => {
+    const s = state[i];
+    const h = currentMemoryStrength(s || { h: 0.1 });
+    if (!s || (s.reviews || 0) === 0) n++;
+    else if (h > 0.8) mastered++;
+    else learning++;
+    if (h < 0.6 || !s || (s.reviews || 0) === 0) due++;
+  });
+  return { mastered, learning, new: n, due };
+}
+
+const sigmoid = (x) => 1 / (1 + Math.exp(-x));
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
 export { ExamView };

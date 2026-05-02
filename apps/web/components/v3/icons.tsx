@@ -224,6 +224,9 @@ export const I = {
       }
     />
   ),
+  upload: (p: IconProps) => (
+    <Ico {...p} d="M12 16V4M6 10l6-6 6 6M4 20h16" />
+  ),
 };
 
 export type IconKey = keyof typeof I;
