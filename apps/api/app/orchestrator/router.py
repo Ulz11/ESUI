@@ -43,7 +43,6 @@ TaskKind = Literal[
     "signals.ai_topic",
     "memory.classify",
     "memory.consolidate",
-    "together.scene_prompt",
     "chat.auto_title",
 ]
 
@@ -75,7 +74,6 @@ _TASK_DEFAULT: dict[TaskKind, RouteSpec] = {
     "signals.ai_topic":    RouteSpec("perplexity", "perplexity-research"),
     "memory.classify":     RouteSpec("anthropic", "haiku"),
     "memory.consolidate":  RouteSpec("anthropic", "sonnet"),
-    "together.scene_prompt": RouteSpec("anthropic", "sonnet"),
     "chat.auto_title":     RouteSpec("anthropic", "haiku"),
 }
 

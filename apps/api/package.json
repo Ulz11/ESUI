@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "uv run uvicorn app.main:asgi --reload --host 0.0.0.0 --port 8000",
     "migrate": "uv run alembic upgrade head",
+    "seed": "uv run python seed.py",
     "revision": "uv run alembic revision --autogenerate -m",
     "test": "uv run pytest",
     "lint": "uv run ruff check .",

@@ -117,10 +117,13 @@ export type VaultSearchHit = {
 };
 
 export type VaultGraph = {
+  // Backend returns title (not label) and tags. Optional positional hints
+  // (x, y, centrality) are added by the layout pass — never sent by the API.
   nodes: Array<{
     id: string;
-    label: string;
+    title: string;
     content_type?: string;
+    tags?: string[];
     centrality?: number;
     x?: number;
     y?: number;
@@ -188,9 +191,11 @@ export type ExamArtifact = {
   workspace_id: string;
   kind: ExamArtifactKind;
   title: string;
-  mode: Mode;
+  payload: Record<string, unknown>;
   status: "generating" | "ready" | "error";
-  content: Record<string, unknown> | null;
+  error: string | null;
+  generated_in_mode: Mode | null;
+  generated_by_model: string | null;
   created_at: string;
 };
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Empty, Skel } from "./atoms";
 import { I } from "./icons";
 import { api } from "@/lib/api";
@@ -16,8 +17,10 @@ const SOURCES = [
 ];
 
 function SignalsView() {
+  const router = useRouter();
   const [src, setSrc] = useState("chinese_philosophy");
   const [idx, setIdx] = useState(0);
+  const [shared, setShared] = useState(false);
   const { items, loading, reload } = useSignals(src);
   const list = items;
   const q = list[idx];
@@ -31,6 +34,18 @@ function SignalsView() {
     if (!q) return;
     try {
       await api.post(`/api/v1/signals/${q.id}/pin`);
+    } catch {}
+  };
+
+  // "Share to chat" — drop the quote into the composer seed and route to /chat.
+  // chat.jsx reads `esui:chat:seed` from sessionStorage on mount.
+  const onShare = () => {
+    if (!q) return;
+    try {
+      const seed = `> ${q.body}\n— ${q.title || q.source_name || ""}\n\n`;
+      window.sessionStorage.setItem("esui:chat:seed", seed);
+      setShared(true);
+      router.push("/chat");
     } catch {}
   };
 
@@ -177,8 +192,8 @@ function SignalsView() {
                   <button className="qbtn" onClick={onPin}>
                     <I.pin size={13} /> pin to vault
                   </button>
-                  <button className="qbtn">
-                    <I.chat size={13} /> share to chat
+                  <button className="qbtn" onClick={onShare} disabled={shared}>
+                    <I.chat size={13} /> {shared ? "shared" : "share to chat"}
                   </button>
                 </div>
               </>

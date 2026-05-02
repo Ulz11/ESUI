@@ -1,35 +1,55 @@
-# ESUI — Architecture & System Design
+# ESUI — Docs
 
-ESUI is a private AI workspace for two users (Esui and Badrushk). Five widgets share one memory layer: Chat, Exam, Vault, Together Photos, Signals. Two AI personas (Ulzii Mode, Obama Mode) reshape how every widget thinks.
+> **Source of truth: [`DESIGN_BRIEF_V3.md`](./DESIGN_BRIEF_V3.md).**
+> Everything else in this folder is V1/V2 history kept for reference.
+> If anything in `00-overview.md` … `06-deploy.md` contradicts the V3 brief,
+> the V3 brief wins.
 
-This `docs/` folder contains the full system design. Read in order or jump to what you need.
+## What ESUI actually is (V3)
 
-| #  | Document                       | What's in it                                                            |
-|----|--------------------------------|-------------------------------------------------------------------------|
-| 00 | [Overview](00-overview.md)     | Architecture style, service map, module boundaries, principles          |
-| 01 | [Data](01-data.md)             | Postgres schema, pgvector setup, Redis keyspaces, R2 layout             |
-| 02 | [API](02-api.md)               | REST endpoints + Socket.io events per widget                            |
-| 03 | [AI Layer](03-ai.md)           | Mode prompts, model router, retrieval, memory engine, ingest, streaming |
-| 04 | [Widgets](04-widgets.md)       | Per-widget specs: behaviors, payloads, edge cases                       |
-| 05 | [Jobs](05-jobs.md)             | Celery task catalog and beat schedule                                   |
-| 06 | [Deploy](06-deploy.md)         | Repo layout, env vars, hosting, CI, security                            |
+Single-tenant private workspace for **Esui**. Badrushk has read-only access
+to the **Beauty** gallery only — every other route is gated to Esui.
 
-## Quick principles
+Seven routes share one memory layer: **Home · Chat · Calendar · Vault ·
+Beauty · Signals · Exam**.
 
-1. **Memory-first.** Every AI call is grounded in retrieved memory. No blank context.
-2. **Mode shapes everything.** Mode determines system prompt, model selection, retrieval bias, tool palette.
-3. **Streaming is the default.** No spinners. Skeletons for loading. Tokens stream as they're generated.
-4. **Two users, no more.** Auth is allowlist + magic link. Authorization is "which of two."
-5. **Modular monolith.** One FastAPI process. Internal module boundaries, not network boundaries.
+Two engineered AI modes:
+- **Ulzii** — TOK / Teacher / Growth lens. Voronoi-style knowledge maps,
+  mind maps, ways-of-knowing prompts.
+- **Obama** — Tech / Business / Founder lens. Market research, three-scenario
+  sims, decision memos, tech-stack reasoning.
 
-## Stack at a glance
+Three providers locked, env-driven model IDs:
+- Claude (Opus 4.7 / Sonnet 4.6 / Haiku 4.5)
+- Gemini 3.1 Pro
+- Perplexity Sonar (Reasoning Pro / Deep Research)
 
-- **Frontend:** Next.js 14 + TypeScript + Tailwind + Framer Motion + Zustand + Socket.io
-- **Backend:** FastAPI + SQLAlchemy async + Pydantic v2 + python-socketio + Celery
-- **Data:** Postgres 16 + pgvector + Redis + Cloudflare R2
-- **AI:** LiteLLM router → Anthropic (Opus 4.7, Sonnet 4.6, Haiku 4.5) + Gemini 3.1 Pro + Kimi
-- **Embeddings:** Voyage AI `voyage-3` (1024-dim)
-- **Memory:** Mem0 with custom Postgres adapter on `memories` table
-- **Document parsing:** unstructured.io
-- **Image pipeline:** Remove.bg → Stability AI (FAL.ai fallback)
-- **Hosting:** Vercel (web) + Fly.io (api/worker/beat) + Neon (Postgres) + Upstash (Redis)
+## Stack (current)
+
+- **Frontend:** Next.js 14 (App Router), TypeScript strict, Tailwind, Framer Motion, Zustand, socket.io-client.
+- **Backend:** FastAPI, SQLAlchemy 2 async, python-socketio, **APScheduler** (in-process — no Celery), Alembic.
+- **Storage:** PostgreSQL 16 + pgvector (HNSW), Redis, Cloudflare R2.
+- **AI:** **direct Anthropic / Google / Perplexity SDKs** (no LiteLLM router); prompt caching + extended thinking + forced tool-use JSON; Voyage `voyage-3` embeddings (1024-dim).
+- **Memory:** **direct Postgres** (no Mem0). Haiku fact extraction → Sonnet consolidation → salience decay → Redis "do not re-learn" set.
+- **Document parsing:** Unstructured (optional; can be off in dev).
+- **Beauty:** clean gallery only — no compositing pipeline (no Remove.bg / Stability / FAL).
+- **Hosting:** Vercel (web) + Fly.io (api) + Neon (Postgres) + Upstash (Redis) + Cloudflare R2 (files) + Resend (email).
+
+## Archived
+
+The files below describe earlier (V1 / V2) iterations and are retained for
+reference. They reference Together Photos, LiteLLM, Mem0, Celery, Kimi,
+Remove.bg, Stability, FAL — none of which are in V3.
+
+| #  | Document                            | Status     |
+|----|-------------------------------------|------------|
+| 00 | [Overview](00-overview.md)          | ARCHIVED — V2 |
+| 01 | [Data](01-data.md)                  | ARCHIVED — V2 |
+| 02 | [API](02-api.md)                    | ARCHIVED — V2 |
+| 03 | [AI Layer](03-ai.md)                | ARCHIVED — V2 |
+| 04 | [Widgets](04-widgets.md)            | ARCHIVED — V2 |
+| 05 | [Jobs](05-jobs.md)                  | ARCHIVED — V2 (Celery) |
+| 06 | [Deploy](06-deploy.md)              | ARCHIVED — V2 (4-app deploy; current is single-app) |
+| —  | [DESIGN_BRIEF.md](./DESIGN_BRIEF.md)       | ARCHIVED — V1 |
+| —  | [DESIGN_BRIEF_V2.md](./DESIGN_BRIEF_V2.md) | ARCHIVED — V2 |
+| —  | [**DESIGN_BRIEF_V3.md**](./DESIGN_BRIEF_V3.md) | **CURRENT** |

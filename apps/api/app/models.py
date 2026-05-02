@@ -465,9 +465,11 @@ class Signal(Base):
     provider: Mapped[str | None] = mapped_column(String, nullable=True)
 
     __table_args__ = (
+        # Must mirror migration 0006_signal_categories.py — autogenerate diffs
+        # against this constant. Keep these four locked sources in sync.
         CheckConstraint(
-            "category IN ('mathematics','arabic_philosophy',"
-            "'chinese_philosophy','elements_of_ai')",
+            "category IN ('chinese_philosophy','arabic_philosophy',"
+            "'francis_su','inspiration')",
             name="signals_category_check",
         ),
     )

@@ -5,6 +5,7 @@ import { Empty, Skel } from "./atoms";
 import { I } from "./icons";
 import { api } from "@/lib/api";
 import { examApi } from "@/lib/exam-api";
+import { getSocket } from "@/lib/socket";
 
 // Exam — drop-to-files / auto-summary / flip-card flashcards.
 //
@@ -48,9 +49,22 @@ function ExamView({ mode }) {
 
   useEffect(reloadArtifacts, [reloadArtifacts]);
 
-  // Poll for in-flight (status='generating') artifacts every 2.5s. Once all
-  // are 'ready' we stop polling.
+  // Refresh on Socket.io artifact:complete / artifact:error. The polling
+  // fallback only kicks in if the socket isn't connected (e.g. dev session
+  // before login flushes through).
   useEffect(() => {
+    const sock = getSocket();
+    if (sock) {
+      const onComplete = () => reloadArtifacts();
+      const onError = () => reloadArtifacts();
+      sock.on("artifact:complete", onComplete);
+      sock.on("artifact:error", onError);
+      return () => {
+        sock.off("artifact:complete", onComplete);
+        sock.off("artifact:error", onError);
+      };
+    }
+    // No socket → fall back to polling while anything is generating.
     const inflight = artifacts.some((a) => a.status === "generating");
     if (!inflight) return;
     const id = setInterval(reloadArtifacts, 2500);
@@ -491,9 +505,13 @@ function FlashcardSession({ deck, onUpdate }) {
     }
   }, [idx, queue, deck.id]);
 
-  // Keyboard shortcuts: Space/Enter = flip, 1-4 = rate when flipped
+  // Keyboard shortcuts: Space/Enter = flip, 1-4 = rate when flipped.
+  // Skip when focus is in an input/textarea so typing in DropZone or workspace
+  // forms doesn't accidentally flip cards.
   useEffect(() => {
     const onKey = (e) => {
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target && e.target.isContentEditable)) return;
       if (e.key === " " || e.key === "Enter") {
         e.preventDefault();
         flip();
@@ -788,6 +806,7 @@ function Stat({ label, value, color }) {
 
 function SecondaryActions({ workspace, mode, cheatsheet, practice, graph, onGenerate }) {
   const [busy, setBusy] = useState(null);
+  const [open, setOpen] = useState(null); // kind currently expanded
 
   const generate = async (kind) => {
     setBusy(kind);
@@ -800,63 +819,259 @@ function SecondaryActions({ workspace, mode, cheatsheet, practice, graph, onGene
   };
 
   const items = [
-    { kind: "cheatsheet",      label: "cheatsheet",         existing: cheatsheet },
-    { kind: "practice_set",    label: "practice set",       existing: practice },
-    { kind: "knowledge_graph", label: "knowledge graph",    existing: graph },
+    { kind: "cheatsheet",      label: "cheatsheet",         existing: cheatsheet, blurb: "compressed for the day before." },
+    { kind: "practice_set",    label: "practice set",       existing: practice,   blurb: "10 calibrated questions." },
+    { kind: "knowledge_graph", label: "knowledge graph",    existing: graph,      blurb: "voronoi map of the territory." },
   ];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-      {items.map((it) => (
-        <div
-          key={it.kind}
-          style={{
-            padding: "14px 16px",
-            border: "1px solid var(--rule)",
-            borderRadius: "var(--r-md)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-            <span style={{ fontFamily: "var(--serif)", fontSize: 16, color: "var(--ink)" }}>
-              <em>{it.label}</em>
-            </span>
-            {it.existing && it.existing.status === "ready" && (
-              <span className="mono" style={{ fontSize: 10, color: "var(--forest)", letterSpacing: ".06em", textTransform: "uppercase" }}>
-                ready
-              </span>
-            )}
-            {it.existing && it.existing.status === "generating" && (
-              <span className="mono" style={{ fontSize: 10, color: "var(--gold)", letterSpacing: ".06em", textTransform: "uppercase" }}>
-                generating
-              </span>
-            )}
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+        {items.map((it) => {
+          const isOpen = open === it.kind && it.existing?.status === "ready";
+          return (
+            <div
+              key={it.kind}
+              style={{
+                padding: "14px 16px",
+                border: isOpen ? "1px solid var(--ink)" : "1px solid var(--rule)",
+                borderRadius: "var(--r-md)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                background: isOpen ? "var(--surface)" : "transparent",
+                transition: "border-color .15s, background .15s",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+                <span style={{ fontFamily: "var(--serif)", fontSize: 16, color: "var(--ink)" }}>
+                  <em>{it.label}</em>
+                </span>
+                {it.existing && it.existing.status === "ready" && (
+                  <span className="mono" style={{ fontSize: 10, color: "var(--forest)", letterSpacing: ".06em", textTransform: "uppercase" }}>
+                    ready
+                  </span>
+                )}
+                {it.existing && it.existing.status === "generating" && (
+                  <span className="mono" style={{ fontSize: 10, color: "var(--gold)", letterSpacing: ".06em", textTransform: "uppercase" }}>
+                    generating
+                  </span>
+                )}
+                {it.existing && it.existing.status === "error" && (
+                  <span className="mono" style={{ fontSize: 10, color: "var(--rose)", letterSpacing: ".06em", textTransform: "uppercase" }}>
+                    error
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--ink-50)", lineHeight: 1.5, fontFamily: "var(--serif)", fontStyle: "italic" }}>
+                {it.blurb}
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                <button
+                  onClick={() => generate(it.kind)}
+                  disabled={busy === it.kind || it.existing?.status === "generating"}
+                  className="qbtn"
+                  style={{
+                    padding: "5px 10px",
+                    border: "1px solid var(--rule)",
+                    borderRadius: 100,
+                    fontSize: 12,
+                    opacity: busy === it.kind ? 0.6 : 1,
+                  }}
+                >
+                  {busy === it.kind ? "starting…" : it.existing ? "regenerate" : "generate"}
+                </button>
+                {it.existing?.status === "ready" && (
+                  <button
+                    onClick={() => setOpen(isOpen ? null : it.kind)}
+                    className="qbtn"
+                    style={{
+                      padding: "5px 10px",
+                      border: "1px solid var(--rule)",
+                      borderRadius: 100,
+                      fontSize: 12,
+                      color: "var(--ink)",
+                    }}
+                  >
+                    {isOpen ? "hide" : "open"}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Expanded artifact body */}
+      {open === "cheatsheet" && cheatsheet?.status === "ready" && (
+        <div style={{ marginTop: 8, padding: "20px 24px", border: "1px solid var(--rule-soft)", borderRadius: "var(--r-md)", background: "var(--paper-2)" }}>
+          <CheatsheetRender artifact={cheatsheet} mode={mode} />
+        </div>
+      )}
+      {open === "practice_set" && practice?.status === "ready" && (
+        <div style={{ marginTop: 8, padding: "20px 24px", border: "1px solid var(--rule-soft)", borderRadius: "var(--r-md)", background: "var(--paper-2)" }}>
+          <PracticeRender artifact={practice} />
+        </div>
+      )}
+      {open === "knowledge_graph" && graph?.status === "ready" && (
+        <div style={{ marginTop: 8, padding: "20px 24px", border: "1px solid var(--rule-soft)", borderRadius: "var(--r-md)", background: "var(--paper-2)" }}>
+          <KnowledgeGraphRender artifact={graph} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CheatsheetRender({ artifact, mode }) {
+  const sections = artifact.payload?.sections || [];
+  const accent = mode === "ulzii" ? "var(--sky)" : "var(--forest)";
+  if (sections.length === 0) {
+    return <EmptyMicro line="cheatsheet payload was empty — try regenerating." />;
+  }
+  return (
+    <div style={{ maxWidth: 820 }}>
+      {sections.map((s, i) => (
+        <div key={i} style={{ borderTop: i === 0 ? "none" : "1px solid var(--rule-soft)", padding: i === 0 ? 0 : "18px 0 0", marginTop: i === 0 ? 0 : 14 }}>
+          <div className="mono" style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: accent }}>
+            {s.title}
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--ink-50)", lineHeight: 1.5, fontFamily: "var(--serif)", fontStyle: "italic" }}>
-            {it.kind === "cheatsheet" && "compressed for the day before."}
-            {it.kind === "practice_set" && "10 calibrated questions."}
-            {it.kind === "knowledge_graph" && "voronoi map of the territory."}
+          <div style={{ marginTop: 10 }}>
+            {(s.items || []).map((it, j) => (
+              <div key={j} style={{ marginTop: j === 0 ? 0 : 14 }}>
+                <div style={{ fontFamily: "var(--serif)", fontSize: 16, color: "var(--ink)" }}>
+                  <strong>{it.name}</strong>
+                </div>
+                <div style={{ color: "var(--ink-70)", marginTop: 4, whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.6 }}>
+                  {it.body_md}
+                </div>
+              </div>
+            ))}
           </div>
-          <button
-            onClick={() => generate(it.kind)}
-            disabled={busy === it.kind || it.existing?.status === "generating"}
-            className="qbtn"
-            style={{
-              alignSelf: "flex-start",
-              marginTop: 6,
-              padding: "5px 10px",
-              border: "1px solid var(--rule)",
-              borderRadius: 100,
-              fontSize: 12,
-              opacity: busy === it.kind ? 0.6 : 1,
-            }}
-          >
-            {busy === it.kind ? "starting…" : it.existing ? "regenerate" : "generate"}
-          </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+function PracticeRender({ artifact }) {
+  const questions = artifact.payload?.questions || [];
+  const [revealed, setRevealed] = useState(() => new Set());
+  const toggle = (id) => {
+    setRevealed((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  if (questions.length === 0) {
+    return <EmptyMicro line="no questions yet — try regenerating." />;
+  }
+  return (
+    <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 14 }}>
+      {questions.map((q, i) => {
+        const open = revealed.has(q.id);
+        return (
+          <li key={q.id || i} style={{ paddingBottom: 14, borderBottom: "1px solid var(--rule-soft)" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+              <span className="mono tnum" style={{ fontSize: 11, color: "var(--ink-35)", width: 24 }}>
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: "var(--serif)", fontSize: 16, color: "var(--ink)", lineHeight: 1.5 }}>
+                  {q.prompt}
+                </div>
+                {q.choices && q.choices.length > 0 && (
+                  <ul style={{ margin: "8px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+                    {q.choices.map((c, j) => (
+                      <li key={j} style={{ fontSize: 14, color: open && j === q.correct_index ? "var(--forest)" : "var(--ink-70)", paddingLeft: 18, position: "relative" }}>
+                        <span style={{ position: "absolute", left: 0, color: "var(--ink-35)", fontFamily: "var(--mono)", fontSize: 11 }}>
+                          {String.fromCharCode(65 + j)}.
+                        </span>
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center" }}>
+                  <span className="mono" style={{ fontSize: 10, color: "var(--ink-35)", letterSpacing: ".08em", textTransform: "uppercase" }}>
+                    {q.topic}
+                  </span>
+                  {typeof q.difficulty === "number" && (
+                    <span className="mono" style={{ fontSize: 10, color: "var(--ink-35)" }}>
+                      difficulty {Math.round(q.difficulty * 10) / 10}
+                    </span>
+                  )}
+                  <button onClick={() => toggle(q.id)} className="qbtn" style={{ marginLeft: "auto", padding: "3px 8px", fontSize: 11 }}>
+                    {open ? "hide answer" : "reveal"}
+                  </button>
+                </div>
+                {open && (q.expected || q.rubric) && (
+                  <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--ink-06)", borderRadius: 6, fontSize: 13.5, color: "var(--ink-70)", lineHeight: 1.55 }}>
+                    {q.expected && <div><strong style={{ color: "var(--ink)" }}>Expected:</strong> {q.expected}</div>}
+                    {q.rubric && <div style={{ marginTop: q.expected ? 6 : 0 }}><strong style={{ color: "var(--ink)" }}>Rubric:</strong> {q.rubric}</div>}
+                  </div>
+                )}
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function KnowledgeGraphRender({ artifact }) {
+  const data = artifact.payload || {};
+  const regions = data.regions || [];
+  const nodes = data.nodes || [];
+  const edges = data.edges || [];
+  if (nodes.length === 0) {
+    return <EmptyMicro line="graph is empty." />;
+  }
+  // Region-grouped 2D layout. The full 3D constellation lands later.
+  const byRegion = new Map();
+  regions.forEach((r) => byRegion.set(r.id, []));
+  nodes.forEach((n) => {
+    if (!byRegion.has(n.region)) byRegion.set(n.region, []);
+    byRegion.get(n.region).push(n);
+  });
+  return (
+    <div>
+      <div className="mono" style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-35)", marginBottom: 14 }}>
+        {nodes.length} concepts · {regions.length || byRegion.size} regions · {edges.length} edges
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+        {[...byRegion.entries()].map(([rid, ns]) => {
+          const region = regions.find((r) => r.id === rid);
+          return (
+            <div key={rid} style={{ padding: "12px 14px", border: "1px solid var(--rule-soft)", borderRadius: "var(--r-md)", background: "var(--surface)" }}>
+              <div style={{ fontFamily: "var(--serif)", fontStyle: "italic", color: "var(--ink)", fontSize: 16, marginBottom: 8 }}>
+                {region?.label || rid}
+              </div>
+              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+                {ns
+                  .slice()
+                  .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
+                  .map((n) => (
+                    <li key={n.id} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                      <span style={{
+                        width: Math.max(6, Math.round((n.weight || 0.4) * 14)),
+                        height: Math.max(6, Math.round((n.weight || 0.4) * 14)),
+                        borderRadius: 100,
+                        background: region?.color || "var(--ink-50)",
+                        flexShrink: 0,
+                      }} />
+                      <span style={{ fontSize: 14, color: "var(--ink)" }}>{n.label}</span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--ink-35)", fontStyle: "italic", fontFamily: "var(--serif)", marginTop: 14 }}>
+        full 3D constellation lands with the next pass.
+      </div>
     </div>
   );
 }

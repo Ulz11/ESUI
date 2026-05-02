@@ -132,13 +132,14 @@ function CalendarView({ mode }) {
 
 // ─── Week ────────────────────────────────────────────────────────────────────
 
-function WeekGrid({ tasks, anchor }) {
+function WeekGrid({ tasks, anchor, reload }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(anchor, i));
   const hours = Array.from({ length: 14 }, (_, i) => i + 8); // 8..21
   const today = new Date();
 
   return (
     <div style={{ overflow: "auto", padding: "0 32px 32px" }}>
+      {/* Header */}
       <div style={{ display: "grid", gridTemplateColumns: "56px repeat(7, 1fr)", borderBottom: "1px solid var(--rule)" }}>
         <div />
         {days.map((d) => {
@@ -180,6 +181,11 @@ function WeekGrid({ tasks, anchor }) {
           );
         })}
       </div>
+
+      {/* All-day strip — events with all_day OR with no time slot. */}
+      <AllDayStrip days={days} tasks={tasks} reload={reload} />
+
+      {/* Hour grid + timed events */}
       <div style={{ display: "grid", gridTemplateColumns: "56px repeat(7, 1fr)", position: "relative" }}>
         <div>
           {hours.map((h) => (
@@ -191,7 +197,13 @@ function WeekGrid({ tasks, anchor }) {
           ))}
         </div>
         {days.map((d) => {
-          const dayTasks = tasks.filter((t) => t.kind === "event" && t.starts_at && sameDay(new Date(t.starts_at), d));
+          const dayTasks = tasks.filter(
+            (t) =>
+              t.kind === "event" &&
+              !t.all_day &&
+              t.starts_at &&
+              sameDay(new Date(t.starts_at), d),
+          );
           return (
             <div key={d.toISOString()} style={{ borderLeft: "1px solid var(--rule-soft)", position: "relative" }}>
               {hours.map((h) => (
@@ -234,6 +246,70 @@ function WeekGrid({ tasks, anchor }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function AllDayStrip({ days, tasks, reload }) {
+  // Buckets of all-day events keyed by ISO day.
+  const byDay = useMemo(() => {
+    const m = new Map();
+    days.forEach((d) => m.set(d.toDateString(), []));
+    for (const t of tasks) {
+      if (t.kind !== "event") continue;
+      if (!t.all_day) continue;
+      const d = t.starts_at ? new Date(t.starts_at) : null;
+      if (!d) continue;
+      const key = d.toDateString();
+      if (m.has(key)) m.get(key).push(t);
+    }
+    return m;
+  }, [days, tasks]);
+
+  const anyAllDay = [...byDay.values()].some((arr) => arr.length > 0);
+  if (!anyAllDay) return null;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "56px repeat(7, 1fr)",
+        borderBottom: "1px solid var(--rule-soft)",
+        background: "var(--paper-2)",
+      }}
+    >
+      <div className="mono" style={{ padding: "8px 0 8px 8px", fontSize: 9, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-35)", display: "flex", alignItems: "center" }}>
+        all day
+      </div>
+      {days.map((d) => {
+        const items = byDay.get(d.toDateString()) || [];
+        return (
+          <div key={d.toISOString()} style={{ borderLeft: "1px solid var(--rule-soft)", padding: "6px 6px", minHeight: 28, display: "flex", flexDirection: "column", gap: 2 }}>
+            {items.map((t) => {
+              const accent = colorOf(t);
+              return (
+                <div
+                  key={t.id}
+                  title={t.title}
+                  style={{
+                    fontSize: 11,
+                    padding: "3px 6px",
+                    borderRadius: 4,
+                    background: tintOf(t),
+                    borderLeft: `3px solid ${accent}`,
+                    color: "var(--ink)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {t.title}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -463,6 +539,18 @@ function SuggestionsPanel({ mode, anchor, onClose, onAdded }) {
   const [skippedIdx, setSkippedIdx] = useState(() => new Set());
   const [editingIdx, setEditingIdx] = useState(null);
 
+  // Esc closes the drawer.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const onAsk = async () => {
     setStage("loading");
     setError(null);
@@ -523,6 +611,9 @@ function SuggestionsPanel({ mode, anchor, onClose, onAdded }) {
   return (
     <div
       className="fi"
+      role="dialog"
+      aria-modal="false"
+      aria-label="AI suggestions"
       style={{
         position: "absolute",
         top: 0,

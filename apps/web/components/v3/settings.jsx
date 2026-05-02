@@ -266,13 +266,64 @@ function UsagePanel() {
 }
 
 function ThemePanel() {
+  // Persists to localStorage and updates `data-theme` on <html>. The same key
+  // is read by V3App on mount, so the choice survives a reload.
+  const [theme, setTheme] = useState(() => {
+    if (typeof document === "undefined") return "light";
+    return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  });
+
+  const apply = (next) => {
+    setTheme(next);
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.theme = next;
+    }
+    try {
+      window.localStorage.setItem("esui:v3:theme", next);
+    } catch {}
+  };
+
   return (
     <div>
       <div style={{ fontFamily: "var(--serif)", fontSize: 26 }}>
         <em>theme</em>
       </div>
-      <div style={{ marginTop: 24, fontFamily: "var(--serif)", fontStyle: "italic", color: "var(--ink-50)" }}>
-        toggle in the topbar.
+      <div style={{ marginTop: 12, color: "var(--ink-50)", fontSize: 13.5, lineHeight: 1.55, maxWidth: 480 }}>
+        Paper-and-ink by day, deeper at night. Picks up your system preference on first visit; changes here override it.
+      </div>
+      <div style={{ display: "flex", gap: 12, marginTop: 22 }}>
+        {[
+          { k: "light", label: "Day", swatch: "#fbf8f1", ink: "#1a1d2c" },
+          { k: "dark",  label: "Night", swatch: "#161824", ink: "#e8e2d8" },
+        ].map((opt) => {
+          const active = theme === opt.k;
+          return (
+            <button
+              key={opt.k}
+              onClick={() => apply(opt.k)}
+              aria-pressed={active}
+              style={{
+                flex: 1,
+                padding: "16px 18px",
+                border: active ? "2px solid var(--ink)" : "1px solid var(--rule)",
+                borderRadius: "var(--r-md)",
+                background: opt.swatch,
+                color: opt.ink,
+                textAlign: "left",
+                cursor: "pointer",
+                transition: "border-color .15s, transform .15s",
+                transform: active ? "translateY(-1px)" : "none",
+              }}
+            >
+              <div className="mono" style={{ fontSize: 10, letterSpacing: ".18em", textTransform: "uppercase", opacity: 0.55 }}>
+                {active ? "active" : "—"}
+              </div>
+              <div style={{ fontFamily: "var(--serif)", fontSize: 22, marginTop: 4, fontStyle: "italic" }}>
+                {opt.label}
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

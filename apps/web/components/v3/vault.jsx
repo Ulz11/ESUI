@@ -10,6 +10,7 @@ import { createVaultDoc, useVault } from "@/lib/v3-hooks";
 
 function VaultView({ mode }) {
   const [tab, setTab] = useState("notes");
+  const [query, setQuery] = useState("");
 
   const ideas = useVault({ content_type: "idea" });
   const notes = useVault({ content_type: "note,journal,draft,research,reference" });
@@ -21,6 +22,15 @@ function VaultView({ mode }) {
     notes: notes.docs.length,
     chat: chats.docs.length,
     art: arts.docs.length,
+  };
+
+  // Substring filter by title — keeps the "search this tab" promise honest.
+  const filterDocs = (docs) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return docs;
+    return docs.filter((d) =>
+      ((d.title || "") + " " + (d.content_md || "")).toLowerCase().includes(q),
+    );
   };
 
   return (
@@ -35,7 +45,7 @@ function VaultView({ mode }) {
               <em>everything she's keeping</em>
             </div>
           </div>
-          <SearchBar />
+          <SearchBar value={query} onChange={setQuery} />
         </div>
         <div style={{ display: "flex", gap: 4, marginTop: 18 }}>
           {[
@@ -70,18 +80,17 @@ function VaultView({ mode }) {
         </div>
       </div>
       <div style={{ overflow: "auto" }}>
-        {tab === "ideas" && <IdeasList docs={ideas.docs} loading={ideas.loading} reload={ideas.reload} />}
-        {tab === "notes" && <NotesView docs={notes.docs} loading={notes.loading} reload={notes.reload} />}
-        {tab === "chat" && <ChatHistoryList docs={chats.docs} loading={chats.loading} />}
-        {tab === "art" && <ArtifactsList docs={arts.docs} loading={arts.loading} />}
+        {tab === "ideas" && <IdeasList docs={filterDocs(ideas.docs)} loading={ideas.loading} reload={ideas.reload} />}
+        {tab === "notes" && <NotesView docs={filterDocs(notes.docs)} loading={notes.loading} reload={notes.reload} />}
+        {tab === "chat" && <ChatHistoryList docs={filterDocs(chats.docs)} loading={chats.loading} />}
+        {tab === "art" && <ArtifactsList docs={filterDocs(arts.docs)} loading={arts.loading} />}
         {tab === "graph" && <VaultGraph />}
       </div>
     </div>
   );
 }
 
-function SearchBar() {
-  const [q, setQ] = useState("");
+function SearchBar({ value, onChange }) {
   return (
     <div
       style={{
@@ -98,8 +107,8 @@ function SearchBar() {
     >
       <I.search size={13} />
       <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         placeholder="search this tab…"
         style={{
           background: "transparent",

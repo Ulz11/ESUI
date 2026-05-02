@@ -8,8 +8,9 @@
     "lint": "pnpm --filter web lint",
     "db:up": "docker compose up -d db redis",
     "db:down": "docker compose down",
-    "db:reset": "docker compose down -v && docker compose up -d db redis && node -e \"setTimeout(()=>{},3000)\" && pnpm db:migrate",
+    "db:reset": "docker compose down -v && docker compose up -d db redis && node -e \"setTimeout(()=>{},3000)\" && pnpm db:migrate && pnpm db:seed",
     "db:migrate": "pnpm --filter api migrate",
+    "db:seed": "pnpm --filter api seed",
     "db:revision": "pnpm --filter api revision"
   },
   "devDependencies": {

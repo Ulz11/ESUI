@@ -35,6 +35,19 @@ function ChatView({ mode, setMode }) {
     if (!activeConvId && convs.length > 0) setActiveConvId(convs[0].id);
   }, [activeConvId, convs]);
 
+  // "Share to chat" handoff — Signals (and any other surface) can stash text in
+  // sessionStorage and route here. We pick it up once and clear it.
+  useEffect(() => {
+    try {
+      const seed = window.sessionStorage.getItem("esui:chat:seed");
+      if (seed) {
+        setDraft((d) => (d ? d : seed));
+        window.sessionStorage.removeItem("esui:chat:seed");
+        setTimeout(() => composerRef.current?.focus(), 50);
+      }
+    } catch {}
+  }, []);
+
   // Subscribe to socket events for the active conversation
   useEffect(() => {
     if (!activeConvId) return;

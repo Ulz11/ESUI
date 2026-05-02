@@ -501,15 +501,19 @@ function ModesExpanded({ onNav }) {
 // — Exam preview ——————————————————————————————————————————————————————
 
 function ExamPreview() {
+  // No global "progress" exists at this level — exam state is per-workspace.
+  // The doorway preview just shows what's available behind it.
   return (
     <div>
       <div style={{ fontFamily: "var(--serif)", fontSize: 17, color: "var(--ink)" }}>open a workspace</div>
       <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "baseline" }}>
         <I.exam size={18} />
-        <div className="mono" style={{ fontSize: 10.5, color: "var(--ink-50)" }}>summary · cheatsheet · graph · practice</div>
+        <div className="mono" style={{ fontSize: 10.5, color: "var(--ink-50)" }}>
+          summary · flashcards · cheatsheet · practice · graph
+        </div>
       </div>
-      <div style={{ marginTop: 12, height: 4, background: "var(--ink-10)", borderRadius: 2, overflow: "hidden" }}>
-        <div style={{ width: "0%", height: "100%", background: "var(--ink)" }} />
+      <div style={{ marginTop: 12, fontFamily: "var(--serif)", fontStyle: "italic", color: "var(--ink-50)", fontSize: 13 }}>
+        drop notes, get flip-cards.
       </div>
     </div>
   );
